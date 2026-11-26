@@ -2,10 +2,12 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 COPY . .
 
 # Add environment variable for API base URL 
+ARG VITE_TELEGRAM_BOT
+ENV VITE_TELEGRAM_BOT=${VITE_TELEGRAM_BOT}
 ENV VITE_API_BASE_URL=/api/v1
 RUN npm run build
 

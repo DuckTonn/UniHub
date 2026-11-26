@@ -1,0 +1,35 @@
+server:
+  port: ${GATEWAY_PORT:8081}
+  forward-headers-strategy: none
+
+spring:
+  application:
+    name: gateway
+  cloud:
+    gateway:
+      server:
+        webflux:
+          forwarded:
+            enabled: false
+          trusted-proxies: '${TRUSTED_PROXY_PATTERN:(?!)}'
+          x-forwarded:
+            for-enabled: false
+            host-enabled: false
+            port-enabled: false
+            proto-enabled: false
+            prefix-enabled: false
+          httpclient:
+            connect-timeout: 5000
+          routes:
+            - id: backend-api
+              uri: ${BACKEND_URL:http://localhost:8080}
+              predicates:
+                - Path=/api/**
+              filters:
+                - PreserveHostHeader
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

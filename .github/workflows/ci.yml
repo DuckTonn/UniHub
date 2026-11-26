@@ -1,0 +1,120 @@
+name: UniHub CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  spring:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: unihub
+          POSTGRES_USER: unihub
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U unihub -d unihub"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DB_URL: jdbc:postgresql://localhost:5432/unihub
+      DB_USERNAME: unihub
+      NOTIFICATION_EMAIL_ENABLED: "false"
+      NOTIFICATION_TELEGRAM_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+          cache-dependency-path: |
+            backend/pom.xml
+            gateway/pom.xml
+      - run: mvn -B -ntp -f gateway/pom.xml verify
+      - run: mvn -B -ntp -f backend/pom.xml verify
+
+  android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@138b5fb1cf087fdb4c5f3c621466fe304d0cf2e3 # v4.0.3
+        with:
+          packages: platform-tools platforms;android-36 build-tools;35.0.0
+          log-accepted-android-sdk-licenses: "false"
+      - run: bash gradlew --no-daemon testDockerLocalDebugUnitTest assembleDockerLocalDebug
+
+  compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      COMPOSE_PROJECT_NAME: unihub-phase1-ci
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set the test environment file path
+        run: echo "UNIHUB_ENV_FILE=$RUNNER_TEMP/unihub-phase1.env" >> "$GITHUB_ENV"
+      - name: Start the stack with a disposable PostgreSQL instance
+        run: |
+          python - <<'PY'
+          import os
+          import secrets
+          from pathlib import Path
+
+          Path(os.environ["UNIHUB_ENV_FILE"]).write_text(
+              "DB_URL=jdbc:postgresql://postgres:5432/unihub\n"
+              "DB_USERNAME=unihub\n"
+              f"DB_PASSWORD={secrets.token_hex(16)}\n"
+              f"REDIS_PASSWORD={secrets.token_hex(16)}\n"
+              f"JWT_ACCESS_SECRET={secrets.token_hex(16)}\n"
+              f"JWT_REFRESH_SECRET={secrets.token_hex(16)}\n"
+              "NOTIFICATION_EMAIL_ENABLED=false\n"
+              "NOTIFICATION_TELEGRAM_ENABLED=false\n"
+              "LLM_PROVIDER=mock\n"
+              "FRONTEND_PORT=127.0.0.1:18080\n"
+          )
+          PY
+          docker compose --env-file "$UNIHUB_ENV_FILE" -f docker-compose.yml -f .github/ci/compose.yml config --quiet
+          docker compose --env-file "$UNIHUB_ENV_FILE" -f docker-compose.yml -f .github/ci/compose.yml up -d --build --wait --wait-timeout 180
+      - name: Check API and internal AI health
+        run: |
+          compose() { docker compose --env-file "$UNIHUB_ENV_FILE" -f docker-compose.yml -f .github/ci/compose.yml "$@"; }
+          user_id() {
+            compose exec -T postgres psql -U unihub -d unihub -Atc \
+              "SELECT id FROM users WHERE role = '$1' AND status = 'ACTIVE' ORDER BY id LIMIT 1"
+          }
+          compose exec -T backend wget -q -O - http://ai-service:8000/health | grep -Fx '{"status":"ok"}'
+          compose exec -T frontend wget -q -O /dev/null --header 'X-Forwarded-For: 192.0.2.10' http://127.0.0.1/api/test
+          compose exec -T redis sh -ec 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli EXISTS ratelimit:ip:127.0.0.1' | grep -Fx 1
+          compose exec -T redis sh -ec 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli EXISTS ratelimit:ip:192.0.2.10' | grep -Fx 0
+          python .github/ci/gateway_smoke.py http://127.0.0.1:18080 "$UNIHUB_ENV_FILE" "$(user_id STUDENT)" "$(user_id ADMIN)"
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose --env-file "$UNIHUB_ENV_FILE" -f docker-compose.yml -f .github/ci/compose.yml logs --no-color
+      - name: Tear down test containers
+        if: always()
+        run: docker compose --env-file "$UNIHUB_ENV_FILE" -f docker-compose.yml -f .github/ci/compose.yml down -v
