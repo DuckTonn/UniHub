@@ -41,10 +41,11 @@ def request(base, path, expected_status, *, token=None, method="GET", data=None,
         response = error
     with response:
         body = response.read()
-        assert response.status == expected_status, (
-            f"{method} {path}: expected {expected_status}, got {response.status}: "
-            f"{body[:500].decode(errors='replace')}"
-        )
+        if response.status != expected_status:
+            message = f"{method} {path}: expected {expected_status}, got {response.status}"
+            if not path.startswith("/api/v1/auth/"):
+                message += f": {body[:500].decode(errors='replace')}"
+            raise AssertionError(message)
         return body, response.headers
 
 
@@ -90,6 +91,9 @@ def main(base, env_file, student_id, admin_id):
     if "IDENTITY_FIXTURE_PASSWORD" in os.environ:
         web_access = verify_client_login(base, "web", "web-login@example.test", "STUDENT")
         verify_client_login(base, "app", "app-login@example.test", "STAFF")
+        for client, email in (("web", "app-login@example.test"), ("app", "web-login@example.test")):
+            request(base, f"/api/v1/auth/login/{client}", 403, method="POST",
+                    data={"email": email, "password": os.environ["IDENTITY_FIXTURE_PASSWORD"]})
         verify_outbox_registration(base, web_access, os.environ["OUTBOX_FIXTURE_WORKSHOP"])
 
     for path in ("/actuator/health", "/summarize"):
