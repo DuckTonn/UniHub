@@ -103,8 +103,7 @@ def main(base, env_file, student_id, admin_id):
         verify_document_job(base, admin, web_access, os.environ["PAYMENT_FIXTURE_WORKSHOP"])
 
     for path in ("/actuator/health", "/summarize"):
-        _, headers = request(base, path, 200)
-        assert headers.get_content_type() == "text/html", f"{path} should serve the SPA"
+        request(base, path, 404)
     print("Gateway routing, CORS and backend JWT contracts passed.")
 
 

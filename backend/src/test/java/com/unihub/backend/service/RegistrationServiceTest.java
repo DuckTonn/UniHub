@@ -77,7 +77,7 @@ class RegistrationServiceTest {
 
     @BeforeEach
     void setup() {
-        payments = new PaymentService(registrationService, paymentGatewayClient,
+        payments = new PaymentService(registrationService, Optional.of(paymentGatewayClient),
                 new PaymentGatewayCircuitBreaker(3, Duration.ofSeconds(30), Clock.systemUTC()));
         user = User.builder().id(10L).fullName("U").email("u@x").role("STUDENT").status("ACTIVE").build();
         workshop = Workshop.builder()

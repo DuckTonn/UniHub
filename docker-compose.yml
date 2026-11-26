@@ -1,6 +1,6 @@
 services:
   redis:
-    image: redis:7-alpine
+    image: ${REDIS_IMAGE:-redis:7-alpine}
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     command:
@@ -20,7 +20,7 @@ services:
       - cache
 
   rabbitmq:
-    image: rabbitmq:4-alpine
+    image: ${RABBITMQ_IMAGE:-rabbitmq:4-alpine}
     hostname: rabbitmq
     profiles: [messaging]
     environment:
@@ -60,6 +60,8 @@ services:
     env_file:
       - ${UNIHUB_ENV_FILE:-.env.production}
     environment:
+      MANAGEMENT_SERVER_PORT: "9080"
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,prometheus
       RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq}
       RABBITMQ_USER: ${RABBITMQ_USER:-unihub}
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-}
@@ -71,7 +73,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "-T", "3", "-O", "/dev/null", "http://127.0.0.1:8080/actuator/health/readiness"]
+      test: ["CMD", "wget", "-q", "-T", "3", "-O", "/dev/null", "http://127.0.0.1:9080/actuator/health/readiness"]
       interval: 10s
       timeout: 5s
       retries: 8
@@ -85,13 +87,16 @@ services:
   gateway:
     build: ./gateway
     environment:
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      MANAGEMENT_SERVER_PORT: "9081"
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,prometheus
       BACKEND_URL: http://backend:8080
       TRUSTED_PROXY_PATTERN: '\Q${NGINX_EDGE_IP:-172.29.86.2}\E'
     depends_on:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "-T", "3", "-O", "/dev/null", "http://127.0.0.1:8081/actuator/health"]
+      test: ["CMD", "wget", "-q", "-T", "3", "-O", "/dev/null", "http://127.0.0.1:9081/actuator/health"]
       interval: 10s
       timeout: 5s
       retries: 5

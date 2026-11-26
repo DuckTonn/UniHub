@@ -1,5 +1,6 @@
 package com.unihub.gateway;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.cors.CorsConfiguration;
@@ -14,12 +15,12 @@ import java.util.List;
 class GatewayCorsConfiguration {
 
     @Bean
-    WebFilter apiPreflightFilter() {
+    WebFilter apiPreflightFilter(@Value("${FRONTEND_URL:http://localhost:5173}") String frontendUrl) {
         // WebFlux consumes preflight requests before they reach a gateway route.
         // Match the backend's SecurityConfig for OPTIONS while it handles ordinary API responses.
         var apiPath = PathPatternParser.defaultInstance.parse("/api/**");
         var cors = new CorsConfiguration();
-        cors.setAllowedOriginPatterns(List.of("*"));
+        cors.setAllowedOrigins(List.of(frontendUrl));
         cors.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         cors.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Idempotency-Key"));
         cors.setAllowCredentials(true);
