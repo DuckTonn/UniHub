@@ -2,7 +2,7 @@
 
 ## CI và đóng gói bản phát hành
 
-`UniHub CI` chạy Maven cho backend và gateway, FastAPI, build/test Android và Compose. Compose build cả React, chạy lại các hợp đồng API từ Phase 1–5, rồi kiểm tra CORS, quyền truy cập, giới hạn tải, Prometheus, mất Redis, restore PostgreSQL và triển khai/quay lui qua registry tạm. Job dependency-audit lưu báo cáo npm và Python. Việc chạy audit thành công xác nhận có báo cáo hợp lệ. Cần đọc số lượng và mức độ advisory trước khi phát hành.
+`UniHub CI` chạy Maven cho backend và gateway, FastAPI, build/test Android và Compose. Compose build cả React, chạy lại các hợp đồng API từ Phase 1–5, rồi kiểm tra CORS, quyền truy cập, giới hạn tải, Prometheus, mất Redis, restore PostgreSQL và triển khai/quay lui qua registry tạm. Job dependency-audit lưu báo cáo npm và Python. Advisory mức high hoặc critical trong cây npm production làm CI thất bại. Báo cáo Python dùng để phân loại trước khi phát hành.
 
 Sau khi CI của đúng commit trên `main` thành công, người phụ trách phát hành chạy workflow thủ công **Publish UniHub release** trên `main`. Workflow build bốn image Linux, chạy lại smoke test trên các image đó, đẩy chúng lên GHCR theo commit SHA và xuất artifact `unihub-release-<sha>` chứa `release.json`. Manifest định danh từng image bằng digest. Workflow phát hành không kết nối máy chủ triển khai. Giữ artifact và quyền pull của GHCR cho cả bản đang chạy và bản quay lui. Thiết lập biến repository `VITE_TELEGRAM_BOT` nếu UI cần tên bot công khai.
 
