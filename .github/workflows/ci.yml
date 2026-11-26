@@ -63,7 +63,10 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-      - run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
+      - uses: android-actions/setup-android@138b5fb1cf087fdb4c5f3c621466fe304d0cf2e3 # v4.0.3
+        with:
+          packages: platform-tools platforms;android-36 build-tools;35.0.0
+          log-accepted-android-sdk-licenses: "false"
       - run: bash gradlew --no-daemon testDockerLocalDebugUnitTest assembleDockerLocalDebug
 
   compose:
