@@ -71,8 +71,15 @@ public interface RegistrationRepository extends JpaRepository<Registration, Long
             @Param("workshopId") Long workshopId,
             @Param("status") String status);
 
-    // Find PENDING registrations created before the cutoff time (used by cancellation job)
     List<Registration> findByStatusAndCreatedAtBefore(String status, LocalDateTime cutoff);
+
+    long countByWorkshopIdAndStatusIn(Long workshopId, List<String> statuses);
+
+    @Query("select r.id from Registration r where r.status = 'PENDING' and r.createdAt <= :cutoff order by r.id")
+    List<Long> findExpiredPendingIds(@Param("cutoff") LocalDateTime cutoff);
+
+    @Query("select r.workshop.id from Registration r where r.id = :id")
+    java.util.Optional<Long> findWorkshopId(@Param("id") Long id);
 
     /**
      * Bulk-update registration status to CANCELLED for all active registrations of a workshop.

@@ -94,7 +94,7 @@ def main(base, env_file, student_id, admin_id):
         for client, email in (("web", "app-login@example.test"), ("app", "web-login@example.test")):
             request(base, f"/api/v1/auth/login/{client}", 403, method="POST",
                     data={"email": email, "password": os.environ["IDENTITY_FIXTURE_PASSWORD"]})
-        verify_outbox_registration(base, web_access, os.environ["OUTBOX_FIXTURE_WORKSHOP"])
+        verify_outbox_registration(base, web_access, student, os.environ["OUTBOX_FIXTURE_WORKSHOP"])
 
     for path in ("/actuator/health", "/summarize"):
         _, headers = request(base, path, 200)
@@ -118,9 +118,13 @@ def verify_client_login(base, client, email, role):
     return refreshed["accessToken"]
 
 
-def verify_outbox_registration(base, token, workshop_id):
+def verify_outbox_registration(base, token, competing_token, workshop_id):
     assert workshop_id.isdigit(), "Test workshop fixture is missing"
-    request(base, f"/api/v1/workshops/{workshop_id}/register", 201, token=token, method="POST")
+    workshop = f"/api/v1/workshops/{workshop_id}"
+    request(base, f"{workshop}/register", 201, token=token, method="POST")
+    request(base, f"{workshop}/register", 409, token=competing_token, method="POST")
+    body, _ = request(base, workshop, 200, token=competing_token)
+    assert json.loads(body)["remainingSlots"] == 0
     deadline = time.monotonic() + 45
     while time.monotonic() < deadline:
         body, _ = request(base, "/api/v1/notifications", 200, token=token)

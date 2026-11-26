@@ -59,11 +59,12 @@ public class RoomService {
 
     @Transactional
     public RoomResponse createRoom(RoomRequest request) {
-        if (roomRepository.existsByName(request.name())) {
-            throw new ConflictException("Room name already exists: " + request.name());
+        String name = request.name().trim();
+        if (roomRepository.existsByName(name)) {
+            throw new ConflictException("Room name already exists: " + name);
         }
         Room room = Room.builder()
-                .name(request.name().trim())
+                .name(name)
                 .capacity(request.capacity())
                 .build();
         room = roomRepository.save(room);
@@ -77,10 +78,10 @@ public class RoomService {
 
     @Transactional
     public RoomResponse updateRoom(Long id, RoomRequest request) {
-        Room room = findOrThrow(id);
-        // Check unique name constraint (exclude self)
-        if (roomRepository.existsByNameAndIdNot(request.name(), id)) {
-            throw new ConflictException("Room name already exists: " + request.name());
+        Room room = findForUpdate(id);
+        String name = request.name().trim();
+        if (roomRepository.existsByNameAndIdNot(name, id)) {
+            throw new ConflictException("Room name already exists: " + name);
         }
         // Block capacity change when active workshops are using this room
         if (!request.capacity().equals(room.getCapacity())) {
@@ -93,7 +94,7 @@ public class RoomService {
                 );
             }
         }
-        room.setName(request.name().trim());
+        room.setName(name);
         room.setCapacity(request.capacity());
         room = roomRepository.save(room);
         log.info("Updated room id={}", id);
@@ -129,7 +130,7 @@ public class RoomService {
 
     @Transactional
     public void deleteRoom(Long id) {
-        Room room = findOrThrow(id);
+        Room room = findForUpdate(id);
         
         long totalWorkshops = roomRepository.countAllWorkshopsByRoomId(id);
         if (totalWorkshops > 0) {
@@ -151,6 +152,11 @@ public class RoomService {
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    private Room findForUpdate(Long id) {
+        return roomRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Room not found with id: " + id));
+    }
 
     private Room findOrThrow(Long id) {
         return roomRepository.findById(id)
