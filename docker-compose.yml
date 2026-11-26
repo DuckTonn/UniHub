@@ -43,8 +43,8 @@ services:
       LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
       LLM_API_KEY: ${LLM_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      LLM_MODEL: ${LLM_MODEL:-gemini-1.5-flash}
-      LLM_RETRY_ATTEMPTS: ${LLM_RETRY_ATTEMPTS:-3}
+      LLM_MODEL: ${LLM_MODEL:-gemini-3.1-flash-lite}
+      LLM_API_VERSION: ${LLM_API_VERSION:-v1beta}
       TZ: ${TZ:-Asia/Ho_Chi_Minh}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).close()"]

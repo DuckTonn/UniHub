@@ -6,7 +6,6 @@ import com.unihub.backend.repository.PaymentRepository;
 import com.unihub.backend.repository.RegistrationRepository;
 import com.unihub.backend.repository.WorkshopRepository;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -16,14 +15,13 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class GlobalStatsService {
 
     private final WorkshopRepository workshopRepository;
     private final RegistrationRepository registrationRepository;
     private final PaymentRepository paymentRepository;
 
-    public GlobalStatsResponse getGlobalStats() {
+    GlobalStatsResponse calculate(String dataAsOf) {
         // ── 1. Revenue ────────────────────────────────────────────────
         Long totalRevenue = paymentRepository.sumRevenue();
 
@@ -46,11 +44,11 @@ public class GlobalStatsService {
         // ── 5. Actual participation rate (COMPLETED workshops only) ──
         // Scoped to past events so the metric is meaningful
         long totalInCompleted     = registrationRepository.countByWorkshopCompleted();
-        long successInCompleted   = registrationRepository.countByStatusAndWorkshopCompleted("SUCCESS");
+        long checkedIn            = registrationRepository.countCheckedInAtCompletedWorkshops();
         long cancelledInCompleted = registrationRepository.countByStatusAndWorkshopCompleted("CANCELLED");
 
         double actualParticipationRate = totalInCompleted > 0
-                ? round((double) successInCompleted / totalInCompleted * 100) : 0.0;
+                ? round((double) checkedIn / totalInCompleted * 100) : 0.0;
 
         // ── 6. Cancellation rate (COMPLETED workshops only) ───────────
         double cancellationRate = totalInCompleted > 0
@@ -106,6 +104,7 @@ public class GlobalStatsService {
         }
 
         return GlobalStatsResponse.builder()
+                .dataAsOf(dataAsOf)
                 .totalRevenue(totalRevenue)
                 .totalWorkshops(totalWorkshops)
                 .totalRegistrations(totalRegistrations)

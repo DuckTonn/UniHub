@@ -62,6 +62,10 @@ const adminWorkshopService = {
         });
     },
 
+    getAiSummaryStatus(id) {
+        return axiosClient.get(`${adminWorkshopUrl}/${id}/ai-summary`);
+    },
+
     /**
      * Cancel a workshop (Admin only).
      */

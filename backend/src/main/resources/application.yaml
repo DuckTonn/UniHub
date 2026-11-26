@@ -109,6 +109,12 @@ cloudinary:
 ai:
   service:
     url: ${AI_SERVICE_URL:http://localhost:8000}
+  documents:
+    worker-enabled: ${AI_DOCUMENT_WORKER_ENABLED:true}
+
+analytics:
+  projection:
+    enabled: ${ANALYTICS_PROJECTION_ENABLED:true}
 
 management:
   endpoints:

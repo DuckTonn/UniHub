@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import adminWorkshopService from '../services/adminWorkshopService';
 import { useAuth } from '../context/AuthContext';
@@ -61,7 +61,8 @@ const Dashboard = () => {
     const [aiWorkshop, setAiWorkshop] = useState(null);
     const [aiFile, setAiFile] = useState(null);
     const [aiUploading, setAiUploading] = useState(false);
-    const [aiSuccessMessage, setAiSuccessMessage] = useState('');
+    const [aiStatus, setAiStatus] = useState(null);
+    const [aiError, setAiError] = useState('');
     const [openActionId, setOpenActionId] = useState(null);
     const [attendanceWorkshop, setAttendanceWorkshop] = useState(null);
     const [createAccountOpen, setCreateAccountOpen] = useState(false);
@@ -72,8 +73,6 @@ const Dashboard = () => {
         window.addEventListener('click', handleClickOutside);
         return () => window.removeEventListener('click', handleClickOutside);
     }, []);
-
-    const aiPollRef = useRef({ cancelled: false, timeoutId: null });
 
     const fetchWorkshops = useCallback(async ({ silent = false, page = currentPage } = {}) => {
         try {
@@ -93,17 +92,6 @@ const Dashboard = () => {
     }, [currentPage]);
 
     useEffect(() => { fetchWorkshops({ page: 0 }); }, []);  // eslint-disable-line react-hooks/exhaustive-deps
-
-    useEffect(() => {
-        return () => {
-            aiPollRef.current.cancelled = true;
-            if (aiPollRef.current.timeoutId) {
-                clearTimeout(aiPollRef.current.timeoutId);
-            }
-        };
-    }, []);
-
-
 
     const handleCreate = () => {
         setEditingWorkshop(null);
@@ -180,75 +168,49 @@ const Dashboard = () => {
         setAttendanceWorkshop(workshop);
     };
 
-    const pollAiDescriptionUpdate = useCallback(async (workshopId, previousDescription) => {
-        const startTime = Date.now();
-        const maxWaitMs = 120_000; // Tăng lên 2 phút
-        const intervalMs = 3_000; // Kiểm tra mỗi 3 giây
+    useEffect(() => {
+        if (!aiUploadOpen || !aiWorkshop || aiUploading) return undefined;
 
-        const pollOnce = async () => {
-            if (aiPollRef.current.cancelled) return;
-            if (Date.now() - startTime > maxWaitMs) {
-                console.log("Polling timed out");
-                return;
-            }
-
+        let cancelled = false;
+        let timer;
+        const poll = async () => {
             try {
-                const latest = await adminWorkshopService.getById(workshopId);
-                const latestDescription = (latest?.description || '').trim();
-                const prev = (previousDescription || '').trim();
-
-                if (latestDescription && latestDescription !== prev) {
-                    console.log("AI summary detected! Updating UI...");
-                    await fetchWorkshops({ silent: true });
-                    setAiSuccessMessage("AI summary has been updated successfully!");
-                    return;
+                const latest = await adminWorkshopService.getAiSummaryStatus(aiWorkshop.id);
+                if (cancelled) return;
+                setAiStatus(latest);
+                if (latest.status === 'COMPLETED') {
+                    fetchWorkshops({ silent: true });
+                } else if (latest.status === 'QUEUED' || latest.status === 'PROCESSING') {
+                    timer = setTimeout(poll, 3000);
                 }
-            } catch (_) {
-                // Ignore transient errors; keep polling until timeout.
+            } catch {
+                if (!cancelled) timer = setTimeout(poll, 5000);
             }
-
-            aiPollRef.current.timeoutId = setTimeout(pollOnce, intervalMs);
         };
-
-        pollOnce();
-    }, [fetchWorkshops]);
+        poll();
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+        };
+    }, [aiUploadOpen, aiWorkshop, aiUploading, fetchWorkshops]);
 
     const handleOpenAiUpload = (workshop) => {
         setAiWorkshop(workshop);
         setAiFile(null);
-        setAiSuccessMessage('');
-        setError('');
+        setAiStatus(null);
+        setAiError('');
         setAiUploadOpen(true);
     };
 
     const handleAiUploadSubmit = async () => {
-        if (!aiFile) {
-            setError('Please select a PDF file first.');
-            return;
-        }
+        if (!aiFile) return;
         try {
             setAiUploading(true);
-            setError('');
-            setAiSuccessMessage('');
-
-            // Reset any previous poll.
-            if (aiPollRef.current.timeoutId) clearTimeout(aiPollRef.current.timeoutId);
-            aiPollRef.current.cancelled = false;
-
-            const previousDescription = aiWorkshop?.description || '';
-            const res = await adminWorkshopService.uploadAiSummary(aiWorkshop.id, aiFile);
-            setAiSuccessMessage(res.message || 'AI summary is being processed.');
-            setAiFile(null);
-
-            // The AI endpoint is async (202). Poll until the description is actually updated in DB.
-            pollAiDescriptionUpdate(aiWorkshop.id, previousDescription);
-
-            setTimeout(() => {
-                setAiUploadOpen(false);
-                fetchWorkshops({ silent: true });
-            }, 3000);
+            setAiError('');
+            await adminWorkshopService.uploadAiSummary(aiWorkshop.id, aiFile);
+            setAiStatus({ status: 'QUEUED' });
         } catch (err) {
-            setError(err.message || 'Upload failed');
+            setAiError(err.message || 'Upload failed');
         } finally {
             setAiUploading(false);
         }
@@ -563,62 +525,40 @@ const Dashboard = () => {
                             <h3 className="text-lg font-bold text-gray-900 mb-2">Upload PDF for AI Summary</h3>
                             <p className="text-sm text-gray-500 mb-4">{aiWorkshop.title}</p>
 
-                            {aiSuccessMessage ? (
-                                <div className="mb-4 rounded-lg bg-green-50 p-4 text-sm text-green-700">
-                                    {aiSuccessMessage}
-                                </div>
-                            ) : (
-                                <>
-                                    <div className="mb-4">
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">Select PDF File (Max 10MB)</label>
-                                        <input
-                                            type="file"
-                                            accept="application/pdf"
-                                            onChange={(e) => {
-                                                if (e.target.files && e.target.files.length > 0) {
-                                                    setAiFile(e.target.files[0]);
-                                                }
-                                            }}
-                                            className="block w-full text-sm text-gray-500
-                                          file:mr-4 file:py-2 file:px-4
-                                          file:rounded-full file:border-0
-                                          file:text-sm file:font-semibold
-                                          file:bg-fuchsia-50 file:text-fuchsia-700
-                                          hover:file:bg-fuchsia-100"
-                                        />
-                                    </div>
-                                    <p className="text-xs text-gray-500 mb-4">
-                                        The AI service will run in the background to summarize the PDF and update the description.
-                                    </p>
-                                </>
-                            )}
+                            <div aria-live="polite" className="mb-3 text-sm text-gray-700">
+                                {aiStatus?.status === 'QUEUED' && 'Document queued'}
+                                {aiStatus?.status === 'PROCESSING' && 'Generating summary…'}
+                                {aiStatus?.status === 'COMPLETED' && 'Document processed'}
+                                {aiStatus?.status === 'FAILED' && <span className="text-red-700">{aiStatus.error}</span>}
+                            </div>
+                            {aiError && <p role="alert" className="mb-3 text-sm text-red-700">{aiError}</p>}
+                            <label className="block text-sm font-medium text-gray-700 mb-2" htmlFor="ai-document">
+                                Select PDF file (maximum 10 MiB)
+                            </label>
+                            <input id="ai-document" type="file" accept="application/pdf" disabled={aiUploading}
+                                onChange={event => setAiFile(event.target.files[0] ?? null)}
+                                className="block w-full text-sm text-gray-500 file:mr-4 file:rounded-full file:border-0
+                                    file:bg-fuchsia-50 file:px-4 file:py-2 file:font-semibold file:text-fuchsia-700"
+                            />
 
                             <div className="mt-5 flex justify-end gap-3">
                                 <button
                                     onClick={() => {
                                         setAiUploadOpen(false);
                                         setAiFile(null);
-                                        setAiSuccessMessage('');
                                     }}
                                     disabled={aiUploading}
                                     className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition disabled:opacity-50"
                                 >
                                     Close
                                 </button>
-                                {!aiSuccessMessage && (
-                                    <button
-                                        onClick={handleAiUploadSubmit}
-                                        disabled={aiUploading || !aiFile}
-                                        className="flex items-center gap-2 rounded-lg bg-fuchsia-600 px-4 py-2 text-sm font-medium text-white hover:bg-fuchsia-700 transition disabled:opacity-50"
-                                    >
-                                        {aiUploading ? (
-                                            <>
-                                                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
-                                                Uploading...
-                                            </>
-                                        ) : 'Upload & Summarize'}
-                                    </button>
-                                )}
+                                <button
+                                    onClick={handleAiUploadSubmit}
+                                    disabled={aiUploading || !aiFile}
+                                    className="flex items-center gap-2 rounded-lg bg-fuchsia-600 px-4 py-2 text-sm font-medium text-white hover:bg-fuchsia-700 transition disabled:opacity-50"
+                                >
+                                    {aiUploading ? 'Uploading…' : 'Upload & Summarize'}
+                                </button>
                             </div>
                         </div>
                     </div>

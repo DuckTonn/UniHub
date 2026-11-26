@@ -234,6 +234,8 @@ Sao chép file `.env.example` ở thư mục gốc thành `.env.production` (cho
 ### Phương án 1: Chạy bằng Docker (Khuyên dùng cho Production/Test nhanh)
 Docker Compose chạy Nginx/React, Spring Cloud Gateway, backend, FastAPI và Redis. Cấu hình PostgreSQL bên ngoài qua DB_URL. Xem [kiến trúc và rollback Phase 1](docs/microservices-phase-1.md), [Identity & Notification Phase 2](docs/microservices-phase-2.md), [Workshop & Registration Phase 3](docs/microservices-phase-3.md) và [Payment & Attendance Phase 4](docs/microservices-phase-4.md).
 
+[AI & Analytics Phase 5](docs/microservices-phase-5.md) mô tả hàng đợi tài liệu, báo cáo và cách quay lui.
+
 1. Khởi chạy cụm dịch vụ Web hệ thống:
 ```bash
 docker compose --env-file .env.production up -d --build --wait

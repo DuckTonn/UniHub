@@ -1,6 +1,6 @@
 # UniHub Workshop - AI Service
 
-This microservice is responsible for processing PDF documents and generating automated summaries for workshops using Google's Gemini LLM. It is built with **FastAPI** and is designed to run completely asynchronously.
+This FastAPI service extracts text from workshop PDFs and generates summaries with Gemini. The UniHub backend queues documents and calls this service over the Compose network.
 
 ## Features
 - **PDF Text Extraction**: Extracts raw text content from uploaded PDF files.
@@ -9,33 +9,26 @@ This microservice is responsible for processing PDF documents and generating aut
 
 ## Technology Stack
 - **Framework**: FastAPI (Python)
-- **PDF Processing**: PyPDF2
+- **PDF Processing**: pypdf
 - **LLM Integration**: `google-genai` (Gemini)
 - **Deployment**: Docker & Docker Compose
 
 ## Prerequisites
-- Python 3.9+ (if running locally)
+- Python 3.11+ (if running locally)
 - Docker & Docker Compose (recommended)
-- A valid Google Gemini API Key
+- A Gemini API key for provider calls. Use `LLM_PROVIDER=mock` for local tests.
 
 ## Environment Variables
-Create a `.env` file in the root directory (or in this directory) with the following variables:
+Set these variables in the shell for a local run or in the Compose environment file:
 
 ```env
 LLM_PROVIDER=gemini
 LLM_API_KEY=your_gemini_api_key_here
 LLM_MODEL=gemini-3.1-flash-lite
-# Use stable API to avoid v1beta model visibility issues
-LLM_API_VERSION=v1
-# Optional: fail fast if the selected model is not available (no fallback)
-LLM_STRICT_MODEL=true
-# Optional: explicit fallback models to try (comma-separated, in order)
-# LLM_FALLBACK_MODELS=gemini-3.1-flash,gemini-2.5-flash
+LLM_API_VERSION=v1beta
 ```
 
-If you see a `404 ... model is not found` error, the model name is not available for your API key/version. You can set `LLM_MODEL` to a model returned by `genai.list_models()` that supports `generateContent`.
-
-If you see unexpected fallbacks, set `LLM_STRICT_MODEL=true` to fail fast, or set `LLM_FALLBACK_MODELS` to an explicit ordered list.
+If the configured model returns 404, the service looks for a compatible model on the first provider results page and tries it once. Choose a model available for the configured API key and version.
 
 ## Running the Service
 
@@ -46,7 +39,7 @@ You can build and run this service along with the rest of the application using 
 cd ../ # Go to project root
 docker-compose up --build ai-service
 ```
-The service will be available at `http://localhost:8000`.
+The backend reaches the service at `http://ai-service:8000` on the Compose network.
 
 ### Option 2: Running Locally (Without Docker)
 Navigate to the `ai-service` directory and install the dependencies:
@@ -59,7 +52,7 @@ pip install -r requirements.txt
 Run the FastAPI server using Uvicorn:
 
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 ## API Endpoints
@@ -75,12 +68,16 @@ Receives a PDF file and a Workshop ID, processes it, and returns the generated s
 ```json
 {
   "workshop_id": 1,
-  "summary": "This is the generated summary describing the workshop..."
+  "summary": "This is the generated summary describing the workshop...",
+  "speaker": null
 }
 ```
 
 **Error Responses:**
 - `400 Bad Request`: If the PDF cannot be read or text extraction fails.
 - `404 Not Found`: If the configured model is not available for your API key/API version.
-- `429 Too Many Requests`: If your Gemini API quota is exhausted.
+- `413 Payload Too Large`: If the PDF exceeds 10 MiB.
+- `503 Service Unavailable`: If both document slots are busy.
 - `500 Internal Server Error`: For unexpected server errors.
+
+Run the contract tests with `python -m pip install -r requirements-test.txt` and `python -m unittest discover -s tests -v`.
