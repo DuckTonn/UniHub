@@ -70,10 +70,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      UNIHUB_ENV_FILE: ${{ runner.temp }}/unihub-phase1.env
       COMPOSE_PROJECT_NAME: unihub-phase1-ci
     steps:
       - uses: actions/checkout@v5
+      - name: Set the test environment file path
+        run: echo "UNIHUB_ENV_FILE=$RUNNER_TEMP/unihub-phase1.env" >> "$GITHUB_ENV"
       - name: Start the stack with a disposable PostgreSQL instance
         run: |
           python - <<'PY'
