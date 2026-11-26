@@ -20,8 +20,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,6 +34,9 @@ import java.util.List;
 public class NotificationService {
 
     private static final int CANCEL_BATCH_SIZE = 50;
+
+    @Value("${notification.outbox.enabled:false}")
+    private boolean registrationOutboxEnabled;
 
     private final NotificationRepository notificationRepository;
     private final RegistrationRepository registrationRepository;
@@ -64,19 +69,39 @@ public class NotificationService {
     }
 
     public void handleRegistrationSuccess(WorkshopRegistrationSuccessEvent event) {
-        Registration registration = registrationRepository.findByIdWithUserAndWorkshop(event.registrationId())
-                .orElseThrow(() -> new ResourceNotFoundException("Registration not found"));
-
+        Registration registration = findRegistrationForNotification(event.registrationId());
         NotificationContent content = templateService.buildRegistrationSuccess(registration);
-        NotificationRecipient recipient = new NotificationRecipient(
-                registration.getUser().getId(),
-                registration.getUser().getFullName(),
-                registration.getUser().getEmail(),
-            registration.getUser().getPhoneNumber(),
-            registration.getUser().getChatId()
-        );
+        var user = registration.getUser();
+        var recipient = new NotificationRecipient(user.getId(), user.getFullName(), user.getEmail(),
+                user.getPhoneNumber(), user.getChatId());
 
-        dispatchToRecipient(recipient, content, true);
+        List<String> channels = new ArrayList<>();
+        channels.add("EMAIL");
+        if (!registrationOutboxEnabled) {
+            channels.add("IN_APP");
+        }
+        if (isTelegramEligible(recipient.chatId())) {
+            channels.add("TELEGRAM");
+        }
+        dispatcher.dispatch(recipient, content, channels);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void saveRegistrationSuccessInApp(long registrationId) {
+        Registration registration = findRegistrationForNotification(registrationId);
+        NotificationContent content = templateService.buildRegistrationSuccess(registration);
+        notificationRepository.save(Notification.builder()
+                .user(registration.getUser())
+                .title(content.title())
+                .contentHtml(content.contentHtml())
+                .channel("IN_APP")
+                .status("SUCCESS")
+                .build());
+    }
+
+    private Registration findRegistrationForNotification(long registrationId) {
+        return registrationRepository.findByIdWithUserAndWorkshop(registrationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Registration not found"));
     }
 
     public void handleWorkshopCancelled(WorkshopCancelledEvent event) {

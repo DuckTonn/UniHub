@@ -34,9 +34,25 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      rabbitmq:
+        image: rabbitmq:4-alpine
+        env:
+          RABBITMQ_DEFAULT_USER: phase2-ci
+          RABBITMQ_DEFAULT_PASS: ${{ github.run_id }}-${{ github.run_attempt }}
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "su-exec rabbitmq rabbitmq-diagnostics -q check_port_connectivity"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
     env:
       DB_URL: jdbc:postgresql://localhost:5432/unihub
       DB_USERNAME: unihub
+      RUN_NOTIFICATION_OUTBOX_IT: "true"
+      RABBITMQ_USER: phase2-ci
+      RABBITMQ_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}
       NOTIFICATION_EMAIL_ENABLED: "false"
       NOTIFICATION_TELEGRAM_ENABLED: "false"
     steps:
@@ -73,7 +89,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      COMPOSE_PROJECT_NAME: unihub-phase1-ci
+      COMPOSE_PROJECT_NAME: unihub-phase2-ci
+      COMPOSE_PROFILES: messaging
     steps:
       - uses: actions/checkout@v5
       - name: Set the test environment file path
@@ -95,6 +112,8 @@ jobs:
               "NOTIFICATION_EMAIL_ENABLED=false\n"
               "NOTIFICATION_TELEGRAM_ENABLED=false\n"
               "LLM_PROVIDER=mock\n"
+              "NOTIFICATION_OUTBOX_ENABLED=true\n"
+              f"RABBITMQ_PASSWORD={secrets.token_hex(16)}\n"
               "FRONTEND_PORT=127.0.0.1:18080\n"
           )
           PY
@@ -111,7 +130,25 @@ jobs:
           compose exec -T frontend wget -q -O /dev/null --header 'X-Forwarded-For: 192.0.2.10' http://127.0.0.1/api/test
           compose exec -T redis sh -ec 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli EXISTS ratelimit:ip:127.0.0.1' | grep -Fx 1
           compose exec -T redis sh -ec 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli EXISTS ratelimit:ip:192.0.2.10' | grep -Fx 0
+          export IDENTITY_FIXTURE_PASSWORD="$(python -c 'import secrets; print(secrets.token_hex(16))')"
+          compose exec -T postgres psql -v ON_ERROR_STOP=1 -U unihub -d unihub -v "fixture_password=$IDENTITY_FIXTURE_PASSWORD" <<'SQL'
+          INSERT INTO users (full_name, email, password, role, status)
+          VALUES ('Contract Student', 'web-login@example.test', crypt(:'fixture_password', gen_salt('bf')), 'STUDENT', 'ACTIVE'),
+                 ('Contract Staff', 'app-login@example.test', crypt(:'fixture_password', gen_salt('bf')), 'STAFF', 'ACTIVE');
+          SQL
+          export OUTBOX_FIXTURE_WORKSHOP="$(compose exec -T postgres psql -v ON_ERROR_STOP=1 -U unihub -d unihub -qAtc "
+            INSERT INTO workshops (title, total_slots, remaining_slots, price, status, room_id,
+                 registration_start_time, registration_end_time, start_time, end_time)
+            VALUES ('Phase 2 outbox smoke fixture', 10, 10, 0, 'PUBLISHED', (SELECT min(id) FROM rooms),
+                 now() - interval '1 hour', now() + interval '1 hour',
+                 now() + interval '1 day', now() + interval '2 days')
+            RETURNING id")"
           python .github/ci/gateway_smoke.py http://127.0.0.1:18080 "$UNIHUB_ENV_FILE" "$(user_id STUDENT)" "$(user_id ADMIN)"
+          compose exec -T postgres psql -U unihub -d unihub -Atc "
+            SELECT count(*) FROM registration_notification_outbox o
+            JOIN registrations r ON r.id = o.registration_id
+            WHERE r.workshop_id = $OUTBOX_FIXTURE_WORKSHOP
+              AND o.published_at IS NOT NULL AND o.delivered_at IS NOT NULL" | grep -Fx 1
       - name: Show container logs on failure
         if: failure()
         run: docker compose --env-file "$UNIHUB_ENV_FILE" -f docker-compose.yml -f .github/ci/compose.yml logs --no-color

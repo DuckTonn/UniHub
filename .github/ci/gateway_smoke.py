@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -40,10 +41,11 @@ def request(base, path, expected_status, *, token=None, method="GET", data=None,
         response = error
     with response:
         body = response.read()
-        assert response.status == expected_status, (
-            f"{method} {path}: expected {expected_status}, got {response.status}: "
-            f"{body[:500].decode(errors='replace')}"
-        )
+        if response.status != expected_status:
+            message = f"{method} {path}: expected {expected_status}, got {response.status}"
+            if not path.startswith("/api/v1/auth/"):
+                message += f": {body[:500].decode(errors='replace')}"
+            raise AssertionError(message)
         return body, response.headers
 
 
@@ -86,10 +88,50 @@ def main(base, env_file, student_id, admin_id):
     _, headers = request(base, "/api/v1/auth/me", 200, token=new_access_token, headers={"Origin": origin})
     assert headers.get_all("Access-Control-Allow-Origin") == [origin]
 
+    if "IDENTITY_FIXTURE_PASSWORD" in os.environ:
+        web_access = verify_client_login(base, "web", "web-login@example.test", "STUDENT")
+        verify_client_login(base, "app", "app-login@example.test", "STAFF")
+        for client, email in (("web", "app-login@example.test"), ("app", "web-login@example.test")):
+            request(base, f"/api/v1/auth/login/{client}", 403, method="POST",
+                    data={"email": email, "password": os.environ["IDENTITY_FIXTURE_PASSWORD"]})
+        verify_outbox_registration(base, web_access, os.environ["OUTBOX_FIXTURE_WORKSHOP"])
+
     for path in ("/actuator/health", "/summarize"):
         _, headers = request(base, path, 200)
         assert headers.get_content_type() == "text/html", f"{path} should serve the SPA"
     print("Gateway routing, CORS and backend JWT contracts passed.")
+
+
+def verify_client_login(base, client, email, role):
+    body, _ = request(base, f"/api/v1/auth/login/{client}", 200, method="POST",
+                      data={"email": email, "password": os.environ["IDENTITY_FIXTURE_PASSWORD"]})
+    login = json.loads(body)
+    assert login["role"] == role
+    body, _ = request(base, "/api/v1/auth/me", 200, token=login["accessToken"])
+    assert json.loads(body)["userId"] == login["userId"]
+
+    body, _ = request(base, "/api/v1/auth/refresh", 200, method="POST",
+                      data={"refreshToken": login["refreshToken"]})
+    refreshed = json.loads(body)
+    assert refreshed["role"] == role and refreshed["userId"] == login["userId"]
+    request(base, "/api/v1/notifications", 200, token=refreshed["accessToken"])
+    return refreshed["accessToken"]
+
+
+def verify_outbox_registration(base, token, workshop_id):
+    assert workshop_id.isdigit(), "Test workshop fixture is missing"
+    request(base, f"/api/v1/workshops/{workshop_id}/register", 201, token=token, method="POST")
+    deadline = time.monotonic() + 45
+    while time.monotonic() < deadline:
+        body, _ = request(base, "/api/v1/notifications", 200, token=token)
+        notifications = [item for item in json.loads(body)["content"]
+                         if "Phase 2 outbox smoke fixture" in item["contentHtml"]]
+        if notifications:
+            assert len(notifications) == 1
+            assert notifications[0]["channel"] == "IN_APP" and notifications[0]["status"] == "SUCCESS"
+            return
+        time.sleep(3)
+    raise AssertionError("No registration notification arrived from the outbox")
 
 
 if __name__ == "__main__":
