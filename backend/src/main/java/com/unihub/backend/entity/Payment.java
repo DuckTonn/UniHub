@@ -29,5 +29,8 @@ public class Payment {
     private String transactionId;
 
     @Column(nullable = false, length = 20)
-    private String status;  // PENDING, COMPLETED, FAILED
+    private String status;
+
+    @Column(name = "failure_reason")
+    private String failureReason;
 }

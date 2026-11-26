@@ -1,13 +1,12 @@
 package com.unihub.backend.controller;
 
-import com.unihub.backend.enums.IdempotencyState;
 import com.unihub.backend.dto.ErrorResponse;
 import com.unihub.backend.dto.PageResponse;
 import com.unihub.backend.dto.PaymentResultResponse;
 import com.unihub.backend.dto.RegistrationResponse;
 import com.unihub.backend.dto.UserRegistrationResponse;
 import com.unihub.backend.dto.WorkshopResponse;
-import com.unihub.backend.service.IdempotencyService;
+import com.unihub.backend.service.PaymentService;
 import com.unihub.backend.service.RegistrationService;
 import com.unihub.backend.service.WorkshopService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -18,7 +17,6 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -27,7 +25,6 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@Slf4j
 @RequestMapping("/api/v1/workshops")
 @RequiredArgsConstructor
 @Tag(name = "Workshops", description = "Workshop discovery and registration endpoints.")
@@ -35,7 +32,7 @@ public class WorkshopController {
 
     private final RegistrationService registrationService;
     private final WorkshopService workshopService;
-    private final IdempotencyService idempotencyService;
+    private final PaymentService paymentService;
     private final com.unihub.backend.service.CheckinService checkinService;
 
     @GetMapping
@@ -133,7 +130,6 @@ public class WorkshopController {
     @SecurityRequirement(name = com.unihub.backend.config.OpenApiConfig.BEARER_AUTH_SCHEME)
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "Payment processed"),
-        @ApiResponse(responseCode = "202", description = "Payment already in progress"),
         @ApiResponse(responseCode = "400", description = "Invalid payment request",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
         @ApiResponse(responseCode = "401", description = "Unauthorized",
@@ -146,19 +142,12 @@ public class WorkshopController {
             @RequestHeader(value = "Idempotency-Key", required = true) String idempotencyKey,
             Authentication authentication) {
 
-        log.info("Received /workshops/{}/pay request with Idempotency-Key={}", id, idempotencyKey);
-
         if (authentication == null || !(authentication.getPrincipal() instanceof Number)) {
             throw new com.unihub.backend.exception.UnauthorizedException("Authentication required");
         }
         Long userId = ((Number) authentication.getPrincipal()).longValue();
 
-        IdempotencyState state = idempotencyService.getState(idempotencyKey);
-        if (state == IdempotencyState.IN_FLIGHT) {
-            return ResponseEntity.status(202).build();
-        }
-
-        PaymentResultResponse res = registrationService.processPayment(id, userId, idempotencyKey);
+        PaymentResultResponse res = paymentService.pay(id, userId, idempotencyKey);
         return ResponseEntity.ok(res);
     }
 

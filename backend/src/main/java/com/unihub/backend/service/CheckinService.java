@@ -3,6 +3,7 @@ package com.unihub.backend.service;
 import com.unihub.backend.dto.AttendeeResponse;
 import com.unihub.backend.dto.CheckinSyncRequest;
 import com.unihub.backend.dto.CheckinSyncResponse;
+import com.unihub.backend.entity.CheckinRecord;
 import com.unihub.backend.entity.Registration;
 import com.unihub.backend.entity.Workshop;
 import com.unihub.backend.exception.ResourceNotFoundException;
@@ -14,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -32,22 +34,17 @@ public class CheckinService {
         Workshop workshop = workshopRepository.findById(workshopId)
                 .orElseThrow(() -> new ResourceNotFoundException("Workshop not found with id " + workshopId));
 
-        if (workshop.getRegistrationEndTime() != null && java.time.LocalDateTime.now().isBefore(workshop.getRegistrationEndTime())) {
+        if (workshop.getRegistrationEndTime() != null && LocalDateTime.now().isBefore(workshop.getRegistrationEndTime())) {
             throw new com.unihub.backend.exception.ForbiddenOperationException("Cannot download attendees while registration is still open.");
         }
 
-        // We only care about SUCCESS registrations for check-in
-        List<Registration> validRegistrations = registrationRepository.findByStatusAndCreatedAtBefore("SUCCESS", java.time.LocalDateTime.now().plusYears(100))
-                .stream().filter(r -> r.getWorkshop().getId().equals(workshopId)).toList();
-
-        // Get all check-in records for this workshop
-        List<com.unihub.backend.entity.CheckinRecord> checkinRecords = checkinRecordRepository.findByRegistrationWorkshopId(workshopId);
-        Map<Long, com.unihub.backend.entity.CheckinRecord> checkinMap = checkinRecords.stream()
-                .collect(Collectors.toMap(com.unihub.backend.entity.CheckinRecord::getRegistrationId, c -> c));
+        List<Registration> validRegistrations = registrationRepository.findConfirmedAttendees(workshopId);
+        Map<Long, CheckinRecord> checkinMap = checkinRecordRepository.findByRegistrationWorkshopId(workshopId).stream()
+                .collect(Collectors.toMap(CheckinRecord::getRegistrationId, c -> c));
         
         return validRegistrations.stream()
                 .map(r -> {
-                    com.unihub.backend.entity.CheckinRecord record = checkinMap.get(r.getId());
+                    CheckinRecord record = checkinMap.get(r.getId());
                     return AttendeeResponse.builder()
                             .qrCode(r.getQrCode())
                             .registrationId(r.getId())
@@ -64,19 +61,17 @@ public class CheckinService {
     public CheckinSyncResponse syncCheckins(CheckinSyncRequest request) {
         Long workshopId = request.getWorkshopId();
         
-        if (!workshopRepository.existsById(workshopId)) {
-            throw new ResourceNotFoundException("Workshop not found with id " + workshopId);
-        }
+        // The same lock protects registration status changes and workshop cancellation.
+        workshopRepository.findByIdForUpdate(workshopId)
+                .orElseThrow(() -> new ResourceNotFoundException("Workshop not found with id " + workshopId));
 
         CheckinSyncResponse response = new CheckinSyncResponse();
         response.setTotalReceived(request.getRecords().size());
 
-        // We only care about SUCCESS registrations
-        List<Registration> validRegistrations = registrationRepository.findByStatusAndCreatedAtBefore("SUCCESS", java.time.LocalDateTime.now().plusYears(100))
-                .stream().filter(r -> r.getWorkshop().getId().equals(workshopId)).toList();
-
-        Map<String, Registration> qrToRegistrationMap = validRegistrations.stream()
-                .collect(Collectors.toMap(Registration::getQrCode, r -> r));
+        var codes = request.getRecords().stream().map(CheckinSyncRequest.CheckinEntry::getQrCode).distinct().toList();
+        Map<String, Registration> qrToRegistrationMap = registrationRepository.findConfirmedTickets(workshopId, codes)
+                .stream().collect(Collectors.toMap(Registration::getQrCode, r -> r));
+        LocalDateTime syncedAt = LocalDateTime.now();
 
         for (CheckinSyncRequest.CheckinEntry entry : request.getRecords()) {
             Registration registration = qrToRegistrationMap.get(entry.getQrCode());
@@ -90,28 +85,10 @@ public class CheckinService {
                 continue;
             }
 
-            try {
-                // Use the idempotent insert query
-                int inserted = checkinRecordRepository.insertOnConflictDoNothing(
-                        registration.getId(),
-                        entry.getScannedAt(),
-                        java.time.LocalDateTime.now()
-                );
-
-                if (inserted > 0) {
-                    response.setSuccessCount(response.getSuccessCount() + 1);
-                } else {
-                    // It was already checked in (duplicate)
-                    response.setDuplicateCount(response.getDuplicateCount() + 1);
-                }
-            } catch (Exception e) {
-                log.error("Error syncing check-in for QR " + entry.getQrCode(), e);
-                response.setFailedCount(response.getFailedCount() + 1);
-                response.getFailures().add(CheckinSyncResponse.FailedEntry.builder()
-                        .qrCode(entry.getQrCode())
-                        .reason("Database error: " + e.getMessage())
-                        .build());
-            }
+            int inserted = checkinRecordRepository.insertOnConflictDoNothing(
+                    registration.getId(), entry.getScannedAt(), syncedAt);
+            response.setSuccessCount(response.getSuccessCount() + inserted);
+            response.setDuplicateCount(response.getDuplicateCount() + 1 - inserted);
         }
 
         log.info("Synced check-ins for workshop {}: {} total, {} success, {} duplicates, {} failed",

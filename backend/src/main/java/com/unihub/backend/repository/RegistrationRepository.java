@@ -71,7 +71,18 @@ public interface RegistrationRepository extends JpaRepository<Registration, Long
             @Param("workshopId") Long workshopId,
             @Param("status") String status);
 
-    List<Registration> findByStatusAndCreatedAtBefore(String status, LocalDateTime cutoff);
+    @Query("""
+            select r from Registration r join fetch r.user
+            where r.workshop.id = :workshopId and r.status = 'SUCCESS'
+            """)
+    List<Registration> findConfirmedAttendees(@Param("workshopId") Long workshopId);
+
+    @Query("""
+            select r from Registration r where r.workshop.id = :workshopId
+            and r.status = 'SUCCESS' and r.qrCode in :codes
+            """)
+    List<Registration> findConfirmedTickets(@Param("workshopId") Long workshopId,
+                                            @Param("codes") List<String> codes);
 
     long countByWorkshopIdAndStatusIn(Long workshopId, List<String> statuses);
 
