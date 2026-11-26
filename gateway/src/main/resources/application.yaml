@@ -29,6 +29,10 @@ spring:
                 - PreserveHostHeader
 
 management:
+  metrics:
+    distribution:
+      percentiles-histogram:
+        spring.cloud.gateway.requests: true
   endpoints:
     web:
       exposure:

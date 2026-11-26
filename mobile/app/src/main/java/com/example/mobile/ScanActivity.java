@@ -16,7 +16,6 @@ import com.example.mobile.data.local.AppDatabase;
 import com.example.mobile.data.local.AttendeeDao;
 import com.example.mobile.data.local.AttendeeEntity;
 import com.example.mobile.data.repository.CheckinRepository;
-import com.example.mobile.util.NetworkUtil;
 import com.google.zxing.BinaryBitmap;
 import com.google.zxing.LuminanceSource;
 import com.google.zxing.MultiFormatReader;
@@ -29,18 +28,19 @@ import com.journeyapps.barcodescanner.CaptureManager;
 import com.journeyapps.barcodescanner.DecoratedBarcodeView;
 
 import java.io.InputStream;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.Locale;
 
 public class ScanActivity extends AppCompatActivity {
 
     // ISO 8601 format for storage and server sync
-    private static final SimpleDateFormat ISO_FORMAT =
-            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault());
+    private static final DateTimeFormatter ISO_FORMAT =
+            DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss", Locale.ROOT);
     // Human-readable format for display only
-    private static final SimpleDateFormat DISPLAY_FORMAT =
-            new SimpleDateFormat("HH:mm dd/MM/yyyy", Locale.getDefault());
+    private static final DateTimeFormatter DISPLAY_FORMAT =
+            DateTimeFormatter.ofPattern("HH:mm dd/MM/yyyy", Locale.getDefault());
 
     private long workshopId;
     private AttendeeDao attendeeDao;
@@ -135,23 +135,15 @@ public class ScanActivity extends AppCompatActivity {
             if (attendee == null) {
                 statusMessage = "❌ Invalid ticket or not for this workshop";
                 status = "ERROR";
-            } else if (attendee.isCheckedIn()) {
-                statusMessage = "⚠️ This ticket has already been checked in at " + formatForDisplay(attendee.getScannedAt());
-                status = "DUPLICATE";
-            } else {
-                String now = ISO_FORMAT.format(new Date());
-                
-                attendee.setCheckedIn(true);
-                attendee.setScannedAt(now);
-                attendee.setSynced(false);
-                attendeeDao.update(attendee);
-
+            } else if (attendeeDao.recordScan(qrCode, workshopId, ISO_FORMAT.format(LocalDateTime.now())) == 1) {
                 statusMessage = "✅ Check-in successful:\n" + attendee.getStudentName() + " - " + attendee.getStudentCode();
                 status = "SUCCESS";
-
-                if (NetworkUtil.isNetworkAvailable(this)) {
-                    repository.triggerBackgroundSync();
-                }
+                repository.triggerBackgroundSync();
+            } else {
+                AttendeeEntity current = attendeeDao.getAttendeeByQrCode(qrCode, workshopId);
+                statusMessage = current == null ? "❌ Invalid ticket or not for this workshop"
+                        : "⚠️ This ticket has already been checked in at " + formatForDisplay(current.getScannedAt());
+                status = current == null ? "ERROR" : "DUPLICATE";
             }
 
             final String msg = statusMessage;
@@ -172,10 +164,9 @@ public class ScanActivity extends AppCompatActivity {
     private String formatForDisplay(String isoDateTime) {
         if (isoDateTime == null || isoDateTime.isEmpty()) return "unknown time";
         try {
-            Date date = ISO_FORMAT.parse(isoDateTime);
-            return date != null ? DISPLAY_FORMAT.format(date) : isoDateTime;
-        } catch (Exception e) {
-            return isoDateTime; // fallback
+            return LocalDateTime.parse(isoDateTime).format(DISPLAY_FORMAT);
+        } catch (DateTimeParseException e) {
+            return isoDateTime;
         }
     }
 

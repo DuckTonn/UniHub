@@ -1,38 +1,53 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+import logging
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
-from services.pdf_extractor import extract_text_from_pdf
-from services.text_cleaner import clean_text
+
 from services.llm_client import LLMClientError, generate_summary_and_speaker
-import io
+from services.text_cleaner import clean_text
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+MAX_PDF_BYTES = 10 * 1024 * 1024
+EXTRACTOR = Path(__file__).resolve().parents[1] / "services" / "pdf_extractor.py"
+
 
 @router.post("/summarize")
-async def summarize_pdf(
-    workshop_id: int = Form(...),
-    file: UploadFile = File(...)
-):
+def summarize_pdf(workshop_id: int = Form(...), file: UploadFile = File(...)):
+    contents = file.file.read(MAX_PDF_BYTES + 1)
+    if len(contents) > MAX_PDF_BYTES:
+        raise HTTPException(status_code=413, detail="PDF exceeds 10 MiB")
     try:
-        contents = await file.read()
-        pdf_file = io.BytesIO(contents)
-        
-        raw_text = extract_text_from_pdf(pdf_file)
-        if not raw_text or len(raw_text.strip()) == 0:
-            return JSONResponse(
-                status_code=400,
-                content={"error": "Could not extract text from PDF file."}
+        text = ""
+        if contents.startswith(b"%PDF-"):
+            parsed = subprocess.run(
+                [sys.executable, "-I", str(EXTRACTOR)], input=contents, stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL, timeout=8,
+                # Parsing needs no provider credentials.
+                env={"SYSTEMROOT": os.environ["SYSTEMROOT"]} if "SYSTEMROOT" in os.environ else {},
             )
-            
-        cleaned_text = clean_text(raw_text)
-        result = generate_summary_and_speaker(cleaned_text)
-        
+            if parsed.returncode == 0:
+                text = clean_text(parsed.stdout.decode("utf-8"))
+        if not text.strip():
+            return invalid_document()
+        result = generate_summary_and_speaker(text)
         return {
             "workshop_id": workshop_id,
             "summary": result.get("summary", ""),
-            "speaker": result.get("speaker")   # None if not found in PDF
+            "speaker": result.get("speaker"),
         }
-    except LLMClientError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.detail)
-    except Exception as e:
-        print(f"Error processing PDF for workshop {workshop_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+    except subprocess.TimeoutExpired:
+        return invalid_document()
+    except LLMClientError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from None
+    except Exception as error:
+        logger.error("Document processing failed for workshop %s (%s)", workshop_id, type(error).__name__)
+        raise HTTPException(status_code=500, detail="Internal server error") from None
+
+
+def invalid_document():
+    return JSONResponse(status_code=400, content={"error": "Could not extract text from PDF file."})

@@ -22,7 +22,7 @@ public class CheckinSyncRequest {
 
     @NotEmpty(message = "Records list cannot be empty")
     @Valid
-    private List<CheckinEntry> records;
+    private List<@NotNull CheckinEntry> records;
 
     @Data
     @Builder

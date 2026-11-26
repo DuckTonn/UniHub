@@ -136,7 +136,7 @@ const StatisticsPage = () => {
 
     const {
         totalRevenue, totalWorkshops, totalRegistrations,
-        paymentSuccessRate, paymentFailureRate, actualParticipationRate, cancellationRate,
+        paymentSuccessRate, paymentFailureRate, actualParticipationRate, cancellationRate, dataAsOf,
         topSpeakers = [], roomUtilization = [], registrationsByHour = [], workshopFillRates = [],
     } = data || {};
 
@@ -163,7 +163,7 @@ const StatisticsPage = () => {
     const attPie = [
         { name: 'Attended', value: av },
         { name: 'Cancelled', value: cv },
-        ...(ov > 0 ? [{ name: 'Registered', value: ov }] : []),
+        ...(ov > 0 ? [{ name: 'Other registrations', value: ov }] : []),
     ].filter(d => d.value > 0);
     const ATT_CLR = ['#6366f1', '#f59e0b', '#f1f5f9'];
 
@@ -187,10 +187,11 @@ const StatisticsPage = () => {
                         </svg>
                         Exit to Dashboard
                     </button>
-                    <div className="flex items-center gap-3">
-                        <span className="hidden sm:inline-block h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
-                        <span className="text-[13px] font-black uppercase tracking-widest text-gray-400">Live Insights</span>
-                    </div>
+                    {dataAsOf && (
+                        <time dateTime={dataAsOf} className="text-sm text-gray-600">
+                            Data as of {new Date(dataAsOf).toLocaleString()}
+                        </time>
+                    )}
                 </div>
             </nav>
 

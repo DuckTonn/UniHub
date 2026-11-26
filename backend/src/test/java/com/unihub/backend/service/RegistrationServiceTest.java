@@ -29,6 +29,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
+import java.time.Clock;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -69,11 +71,14 @@ class RegistrationServiceTest {
     @InjectMocks
     RegistrationService registrationService;
 
+    private PaymentService payments;
     private User user;
     private Workshop workshop;
 
     @BeforeEach
     void setup() {
+        payments = new PaymentService(registrationService, Optional.of(paymentGatewayClient),
+                new PaymentGatewayCircuitBreaker(3, Duration.ofSeconds(30), Clock.systemUTC()));
         user = User.builder().id(10L).fullName("U").email("u@x").role("STUDENT").status("ACTIVE").build();
         workshop = Workshop.builder()
                 .id(5L)
@@ -257,7 +262,7 @@ class RegistrationServiceTest {
                 Payment.builder().registration(pending).status("PENDING").build()));
 
         assertThrows(ConflictException.class,
-                () -> registrationService.processPayment(workshop.getId(), user.getId(), key));
+                () -> payments.pay(workshop.getId(), user.getId(), key));
         verifyNoInteractions(paymentGatewayClient);
     }
 
@@ -272,7 +277,7 @@ class RegistrationServiceTest {
 
         when(paymentRepository.findByIdempotencyKey(key)).thenReturn(Optional.of(p));
 
-        PaymentResultResponse resp = registrationService.processPayment(workshop.getId(), user.getId(), key);
+        PaymentResultResponse resp = payments.pay(workshop.getId(), user.getId(), key);
         assertTrue(resp.isSuccess());
         assertEquals("tx-1", resp.getTransactionId());
         assertEquals("QR-OLD", resp.getQrCode());
@@ -287,7 +292,7 @@ class RegistrationServiceTest {
         when(paymentRepository.findByIdempotencyKey(key)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class,
-                () -> registrationService.processPayment(workshop.getId(), user.getId(), key));
+                () -> payments.pay(workshop.getId(), user.getId(), key));
 
         verify(workshopRepository, never()).save(any());
     }
@@ -303,13 +308,19 @@ class RegistrationServiceTest {
                 .build();
 
         when(paymentRepository.findByIdempotencyKey(key)).thenReturn(Optional.of(p));
-        when(paymentGatewayClient.charge(1234L)).thenReturn(PaymentGatewayResult.builder()
-                .success(true).transactionId("tx-999").build());
+        when(paymentRepository.findWorkshopId(p.getId())).thenReturn(Optional.of(workshop.getId()));
+        when(paymentRepository.findById(p.getId())).thenReturn(Optional.of(p));
+        when(paymentGatewayClient.charge(1234L, key)).thenAnswer(invocation -> {
+            assertEquals("PROCESSING", p.getStatus());
+            verify(paymentRepository).save(p);
+            return PaymentGatewayResult.builder().success(true).transactionId("tx-999").build();
+        });
 
-        PaymentResultResponse resp = registrationService.processPayment(workshop.getId(), user.getId(), key);
+        PaymentResultResponse resp = payments.pay(workshop.getId(), user.getId(), key);
         assertTrue(resp.isSuccess());
         assertEquals("tx-999", resp.getTransactionId());
-        verify(paymentRepository).save(argThat(pay -> "COMPLETED".equals(pay.getStatus())));
+        verify(paymentRepository, times(2)).save(p);
+        assertEquals("COMPLETED", p.getStatus());
         verify(registrationRepository).save(argThat(r -> "SUCCESS".equals(r.getStatus()) && r.getQrCode() != null));
         verify(eventPublisher).publishEvent(any(WorkshopRegistrationSuccessEvent.class));
     }
@@ -325,14 +336,17 @@ class RegistrationServiceTest {
                 .build();
 
         when(paymentRepository.findByIdempotencyKey(key)).thenReturn(Optional.of(p));
-        when(paymentGatewayClient.charge(2000L)).thenReturn(PaymentGatewayResult.builder()
+        when(paymentRepository.findWorkshopId(p.getId())).thenReturn(Optional.of(workshop.getId()));
+        when(paymentRepository.findById(p.getId())).thenReturn(Optional.of(p));
+        when(paymentGatewayClient.charge(2000L, key)).thenReturn(PaymentGatewayResult.builder()
                 .success(false).failureReason("card_declined").build());
 
         PaymentFailedException ex = assertThrows(PaymentFailedException.class,
-                () -> registrationService.processPayment(workshop.getId(), user.getId(), key));
+                () -> payments.pay(workshop.getId(), user.getId(), key));
         assertTrue(ex.getMessage().contains("card_declined"));
 
-        verify(paymentRepository).save(argThat(pay -> "FAILED".equals(pay.getStatus())));
+        verify(paymentRepository, times(2)).save(p);
+        assertEquals("FAILED", p.getStatus());
         verify(registrationRepository).save(argThat(r -> "FAILED".equals(r.getStatus())));
     }
 
@@ -347,15 +361,15 @@ class RegistrationServiceTest {
                 .build();
 
         when(paymentRepository.findByIdempotencyKey(key)).thenReturn(Optional.of(p));
-        when(paymentGatewayClient.charge(3000L)).thenReturn(PaymentGatewayResult.builder()
+        when(paymentGatewayClient.charge(3000L, key)).thenReturn(PaymentGatewayResult.builder()
                 .success(false).failureReason("payment_gateway_unavailable").build());
 
         assertThrows(PaymentGatewayUnavailableException.class,
-                () -> registrationService.processPayment(workshop.getId(), user.getId(), key));
+                () -> payments.pay(workshop.getId(), user.getId(), key));
 
         verify(paymentRepository, never())
                 .save(argThat(pay -> "FAILED".equals(pay.getStatus()) || "COMPLETED".equals(pay.getStatus())));
-        assertEquals("PENDING", p.getStatus());
+        assertEquals("PROCESSING", p.getStatus());
         assertEquals("PENDING", reg.getStatus());
     }
 
@@ -370,13 +384,13 @@ class RegistrationServiceTest {
                 .build();
 
         when(paymentRepository.findByIdempotencyKey(key)).thenReturn(Optional.of(p));
-        when(paymentGatewayClient.charge(3000L)).thenReturn(PaymentGatewayResult.builder()
+        when(paymentGatewayClient.charge(3000L, key)).thenReturn(PaymentGatewayResult.builder()
                 .success(false).failureReason("gateway_http_503").build());
 
         assertThrows(PaymentGatewayUnavailableException.class,
-                () -> registrationService.processPayment(workshop.getId(), user.getId(), key));
+                () -> payments.pay(workshop.getId(), user.getId(), key));
 
-        assertEquals("PENDING", p.getStatus());
+        assertEquals("PROCESSING", p.getStatus());
         assertEquals("PENDING", reg.getStatus());
     }
 
@@ -393,7 +407,7 @@ class RegistrationServiceTest {
         when(paymentRepository.findByIdempotencyKey(key)).thenReturn(Optional.of(p));
 
         ConflictException ex = assertThrows(ConflictException.class,
-                () -> registrationService.processPayment(workshop.getId(), user.getId(), key));
+                () -> payments.pay(workshop.getId(), user.getId(), key));
         assertTrue(ex.getMessage().contains("cancelled"));
 
         verify(workshopRepository, never()).save(any());

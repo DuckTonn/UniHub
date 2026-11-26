@@ -9,6 +9,52 @@ permissions:
   contents: read
 
 jobs:
+  ai:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-service
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: ai-service/requirements*.txt
+      - run: python -m pip install -r requirements-test.txt
+      - run: python -m unittest discover -s tests -v
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Record advisory reports
+        run: |
+          mkdir audit
+          npm --prefix frontend audit --omit=dev --json > audit/npm.json || test "$?" = 1
+          python -m pip install pip-audit==2.10.1
+          python -m pip_audit -r ai-service/requirements.txt --strict --format json --output audit/python.json || test "$?" = 1
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          npm = json.loads(Path("audit/npm.json").read_text())
+          python = json.loads(Path("audit/python.json").read_text())
+          print("npm advisories by severity:", npm["metadata"]["vulnerabilities"])
+          print("Python advisory count:", sum(len(package["vulns"]) for package in python["dependencies"]))
+          PY
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: dependency-audit
+          path: audit/
+
   spring:
     runs-on: ubuntu-latest
     services:
@@ -89,69 +135,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      COMPOSE_PROJECT_NAME: unihub-phase3-ci
-      COMPOSE_PROFILES: messaging
+      COMPOSE_PROJECT_NAME: unihub-phase6-ci
     steps:
       - uses: actions/checkout@v5
-      - name: Set the test environment file path
-        run: echo "UNIHUB_ENV_FILE=$RUNNER_TEMP/unihub-phase1.env" >> "$GITHUB_ENV"
-      - name: Start the stack with a disposable PostgreSQL instance
+      - name: Set isolated test paths
         run: |
-          python - <<'PY'
-          import os
-          import secrets
-          from pathlib import Path
-
-          Path(os.environ["UNIHUB_ENV_FILE"]).write_text(
-              "DB_URL=jdbc:postgresql://postgres:5432/unihub\n"
-              "DB_USERNAME=unihub\n"
-              f"DB_PASSWORD={secrets.token_hex(16)}\n"
-              f"REDIS_PASSWORD={secrets.token_hex(16)}\n"
-              f"JWT_ACCESS_SECRET={secrets.token_hex(16)}\n"
-              f"JWT_REFRESH_SECRET={secrets.token_hex(16)}\n"
-              "NOTIFICATION_EMAIL_ENABLED=false\n"
-              "NOTIFICATION_TELEGRAM_ENABLED=false\n"
-              "LLM_PROVIDER=mock\n"
-              "NOTIFICATION_OUTBOX_ENABLED=true\n"
-              f"RABBITMQ_PASSWORD={secrets.token_hex(16)}\n"
-              "FRONTEND_PORT=127.0.0.1:18080\n"
-          )
-          PY
-          docker compose --env-file "$UNIHUB_ENV_FILE" -f docker-compose.yml -f .github/ci/compose.yml config --quiet
-          docker compose --env-file "$UNIHUB_ENV_FILE" -f docker-compose.yml -f .github/ci/compose.yml up -d --build --wait --wait-timeout 180
-      - name: Check API and internal AI health
-        run: |
-          compose() { docker compose --env-file "$UNIHUB_ENV_FILE" -f docker-compose.yml -f .github/ci/compose.yml "$@"; }
-          user_id() {
-            compose exec -T postgres psql -U unihub -d unihub -Atc \
-              "SELECT id FROM users WHERE role = '$1' AND status = 'ACTIVE' ORDER BY id LIMIT 1"
-          }
-          compose exec -T backend wget -q -O - http://ai-service:8000/health | grep -Fx '{"status":"ok"}'
-          compose exec -T frontend wget -q -O /dev/null --header 'X-Forwarded-For: 192.0.2.10' http://127.0.0.1/api/test
-          compose exec -T redis sh -ec 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli EXISTS ratelimit:ip:127.0.0.1' | grep -Fx 1
-          compose exec -T redis sh -ec 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli EXISTS ratelimit:ip:192.0.2.10' | grep -Fx 0
-          export IDENTITY_FIXTURE_PASSWORD="$(python -c 'import secrets; print(secrets.token_hex(16))')"
-          compose exec -T postgres psql -v ON_ERROR_STOP=1 -U unihub -d unihub -v "fixture_password=$IDENTITY_FIXTURE_PASSWORD" <<'SQL'
-          INSERT INTO users (full_name, email, password, role, status)
-          VALUES ('Contract Student', 'web-login@example.test', crypt(:'fixture_password', gen_salt('bf')), 'STUDENT', 'ACTIVE'),
-                 ('Contract Staff', 'app-login@example.test', crypt(:'fixture_password', gen_salt('bf')), 'STAFF', 'ACTIVE');
-          SQL
-          export OUTBOX_FIXTURE_WORKSHOP="$(compose exec -T postgres psql -v ON_ERROR_STOP=1 -U unihub -d unihub -qAtc "
-            INSERT INTO workshops (title, total_slots, remaining_slots, price, status, room_id,
-                 registration_start_time, registration_end_time, start_time, end_time)
-            VALUES ('Phase 2 outbox smoke fixture', 1, 1, 0, 'PUBLISHED', (SELECT min(id) FROM rooms),
-                 now() - interval '1 hour', now() + interval '1 hour',
-                 now() + interval '1 day', now() + interval '2 days')
-            RETURNING id")"
-          python .github/ci/gateway_smoke.py http://127.0.0.1:18080 "$UNIHUB_ENV_FILE" "$(user_id STUDENT)" "$(user_id ADMIN)"
-          compose exec -T postgres psql -U unihub -d unihub -Atc "
-            SELECT count(*) FROM registration_notification_outbox o
-            JOIN registrations r ON r.id = o.registration_id
-            WHERE r.workshop_id = $OUTBOX_FIXTURE_WORKSHOP
-              AND o.published_at IS NOT NULL AND o.delivered_at IS NOT NULL" | grep -Fx 1
+          echo "UNIHUB_ENV_FILE=$RUNNER_TEMP/unihub-phase6.env" >> "$GITHUB_ENV"
+          echo "UNIHUB_RELEASE_DRILL=$RUNNER_TEMP/unihub-release-drill" >> "$GITHUB_ENV"
+      - run: bash .github/ci/stack.sh start
+      - run: bash .github/ci/stack.sh smoke
+      - run: bash .github/ci/stack.sh operations
+      - run: bash .github/ci/release_drill.sh
       - name: Show container logs on failure
         if: failure()
-        run: docker compose --env-file "$UNIHUB_ENV_FILE" -f docker-compose.yml -f .github/ci/compose.yml logs --no-color
-      - name: Tear down test containers
+        run: bash .github/ci/stack.sh logs
+      - name: Tear down test stack
         if: always()
-        run: docker compose --env-file "$UNIHUB_ENV_FILE" -f docker-compose.yml -f .github/ci/compose.yml down -v
+        run: bash .github/ci/stack.sh down

@@ -24,7 +24,7 @@ import java.time.Duration;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "TRUSTED_PROXY_PATTERN=127[.]0[.]0[.]1")
+        properties = {"TRUSTED_PROXY_PATTERN=127[.]0[.]0[.]1", "FRONTEND_URL=https://client.example"})
 class GatewayRoutingTest {
 
     private static final HttpServer BACKEND = startBackend();
@@ -106,12 +106,16 @@ class GatewayRoutingTest {
                 .header("Access-Control-Request-Method", "GET");
         var allowed = send(preflight.copy().header("Access-Control-Request-Headers", "Authorization"));
         var denied = send(preflight.copy().header("Access-Control-Request-Headers", "X-Unknown"));
+        var unexpectedOrigin = send(request("/api/v1/auth/me").method("OPTIONS", HttpRequest.BodyPublishers.noBody())
+                .header("Origin", "https://different.example").header("Access-Control-Request-Method", "GET"));
 
         assertThat(allowed.statusCode()).isEqualTo(200);
         assertThat(allowed.headers().firstValue("Access-Control-Allow-Origin")).contains(origin);
         assertThat(allowed.headers().firstValue("Access-Control-Allow-Credentials")).contains("true");
         assertThat(allowed.headers().firstValue("Access-Control-Allow-Headers")).contains("Authorization");
         assertThat(denied.statusCode()).isEqualTo(403);
+        assertThat(unexpectedOrigin.statusCode()).isEqualTo(403);
+        assertThat(unexpectedOrigin.headers().firstValue("Access-Control-Allow-Origin")).isEmpty();
     }
 
     @Test

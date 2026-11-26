@@ -1,113 +1,60 @@
 package com.unihub.backend.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.unihub.backend.dto.PaymentGatewayResult;
-import com.unihub.backend.dto.PaymentRequest;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
-@Slf4j
 @ConditionalOnProperty(name = "app.payment-gateway.provider", havingValue = "MOCK", matchIfMissing = true)
 @Profile("!prod")
 public class MockPaymentGatewayClient implements PaymentGatewayClient {
 
-    private final ObjectMapper objectMapper;
-    private final PaymentGatewayCircuitBreaker circuitBreaker;
-
-    @Value("${app.payment-gateway.url}")
-    private final String paymentGatewayUrl = "http://127.0.0.1:8080/api/v1/payments/process";
-
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(5))
-            .build();
+    private final JdbcTemplate jdbc;
 
     @Override
-    public PaymentGatewayResult charge(Long amount) {
-        if (!circuitBreaker.tryAcquirePermission()) {
-            log.warn("Payment gateway circuit is OPEN; failing fast");
-            return gatewayUnavailable();
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public PaymentGatewayResult charge(long amount, String key) {
+        insert(amount, key, "TXN-" + UUID.randomUUID());
+        return find(amount, key).orElseThrow();
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Optional<PaymentGatewayResult> reconcile(long amount, String key, boolean closeIfMissing) {
+        if (closeIfMissing) {
+            insert(amount, key, null);
         }
+        return find(amount, key);
+    }
 
-        try {
-            String payload = objectMapper.writeValueAsString(new PaymentRequest(amount));
+    private void insert(long amount, String key, String transactionId) {
+        jdbc.update("""
+                INSERT INTO mock_payment_operations (idempotency_key, amount, transaction_id)
+                VALUES (?, ?, ?)
+                ON CONFLICT (idempotency_key) DO NOTHING
+                """, key, amount, transactionId);
+    }
 
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(paymentGatewayUrl))
-                    .timeout(Duration.ofSeconds(30))
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(payload))
-                    .build();
-
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                String failureReason = "gateway_http_" + response.statusCode();
-                recordGatewayResult(failureReason);
-                return failed(failureReason);
+    private Optional<PaymentGatewayResult> find(long amount, String key) {
+        return jdbc.query("""
+                SELECT amount, transaction_id FROM mock_payment_operations WHERE idempotency_key = ?
+                """, (row, index) -> {
+            if (row.getLong("amount") != amount) {
+                throw new IllegalStateException("Provider amount differs from the original payment");
             }
-
-            JsonNode body = objectMapper.readTree(response.body());
-            String txId = body.path("transactionId").asText(null);
-            boolean success = body.path("success").asBoolean(false);
-
-            if (!success) {
-                String failureReason = body.path("failureReason").asText("payment_failed");
-                recordGatewayResult(failureReason);
-                return failed(failureReason);
-            }
-
-            if (txId == null || txId.isBlank()) {
-                txId = "TXN-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-            }
-
-            circuitBreaker.recordSuccess();
-            return PaymentGatewayResult.builder()
-                    .success(true)
-                    .transactionId(txId)
-                    .build();
-        } catch (Exception ex) {
-            circuitBreaker.recordFailure();
-            return gatewayUnavailable();
-        }
+            String transactionId = row.getString("transaction_id");
+            return transactionId == null
+                    ? PaymentGatewayResult.builder().failureReason(ATTEMPT_CLOSED).build()
+                    : PaymentGatewayResult.builder().success(true).transactionId(transactionId).build();
+        }, key).stream().findFirst();
     }
-
-    private void recordGatewayResult(String failureReason) {
-        if (isTransientGatewayFailure(failureReason)) {
-            circuitBreaker.recordFailure();
-        } else {
-            // Gateway responded normally; business failures must not open the circuit.
-            circuitBreaker.recordSuccess();
-        }
-    }
-
-    private boolean isTransientGatewayFailure(String failureReason) {
-        return failureReason != null
-                && (failureReason.contains("payment_gateway_unavailable")
-                        || failureReason.startsWith("gateway_http_5"));
-    }
-
-    private PaymentGatewayResult failed(String failureReason) {
-        return PaymentGatewayResult.builder()
-                .success(false)
-                .failureReason(failureReason)
-                .build();
-    }
-
-    private PaymentGatewayResult gatewayUnavailable() {
-        return failed("payment_gateway_unavailable");
-    }
-
 }

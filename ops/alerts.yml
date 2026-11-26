@@ -1,0 +1,45 @@
+groups:
+  - name: unihub
+    rules:
+      - alert: UniHubScrapeTargetDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Metrics unavailable for {{ $labels.job }}"
+      - alert: UniHubGatewayErrors
+        expr: sum(rate(spring_cloud_gateway_requests_seconds_count{httpStatusCode=~"5.."}[5m])) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: Gateway server errors increased
+      - alert: UniHubGatewayLatency
+        expr: histogram_quantile(0.95, sum by (le) (rate(spring_cloud_gateway_requests_seconds_bucket[5m]))) > 2.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Gateway p95 latency is above 2.5 seconds
+      - alert: UniHubOperationsMetricsStale
+        expr: time() - unihub_operations_last_refresh_seconds > 90
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Backend operational gauges stopped refreshing
+      - alert: UniHubDocumentQueueNearCapacity
+        expr: unihub_ai_jobs_active >= 16
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: AI document queue is close to its capacity
+      - alert: UniHubNotificationBacklog
+        expr: unihub_outbox_pending > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Notification outbox has pending publishes

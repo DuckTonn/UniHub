@@ -1,0 +1,30 @@
+services:
+  backend:
+    build: !reset null
+    image: ${UNIHUB_BACKEND_IMAGE:?specify a release image}
+    restart: unless-stopped
+    stop_grace_period: 40s
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+  gateway:
+    build: !reset null
+    image: ${UNIHUB_GATEWAY_IMAGE:?specify a release image}
+    restart: unless-stopped
+    stop_grace_period: 40s
+  ai-service:
+    build: !reset null
+    image: ${UNIHUB_AI_IMAGE:?specify a release image}
+    restart: unless-stopped
+    stop_grace_period: 40s
+  frontend:
+    build: !reset null
+    image: ${UNIHUB_FRONTEND_IMAGE:?specify a release image}
+    restart: unless-stopped
+    environment:
+      UNIHUB_TRUSTED_TLS_PROXY: ${UNIHUB_TRUSTED_TLS_PROXY:-unix:}
+    ports: !override
+      - "127.0.0.1:${UNIHUB_HTTP_PORT:-18080}:80"
+  redis:
+    restart: unless-stopped
+  rabbitmq:
+    restart: unless-stopped

@@ -232,7 +232,11 @@ Sao chép file `.env.example` ở thư mục gốc thành `.env.production` (cho
 - **Lưu ý:** Phải cài đặt môi trường (file `.env` tại các thư mục và file `.env.production` tại root) như phần `🔧 Yêu cầu môi trường` trước khi chạy dự án.
 
 ### Phương án 1: Chạy bằng Docker (Khuyên dùng cho Production/Test nhanh)
-Docker Compose chạy Nginx/React, Spring Cloud Gateway, backend, FastAPI và Redis. Cấu hình PostgreSQL bên ngoài qua DB_URL. Xem [kiến trúc, kiểm tra và rollback Phase 1](docs/microservices-phase-1.md), [cấu hình Identity & Notification Phase 2](docs/microservices-phase-2.md) và [Workshop & Registration Phase 3](docs/microservices-phase-3.md).
+Docker Compose chạy Nginx/React, Spring Cloud Gateway, backend, FastAPI và Redis. Cấu hình PostgreSQL bên ngoài qua DB_URL. Xem [kiến trúc và rollback Phase 1](docs/microservices-phase-1.md), [Identity & Notification Phase 2](docs/microservices-phase-2.md), [Workshop & Registration Phase 3](docs/microservices-phase-3.md) và [Payment & Attendance Phase 4](docs/microservices-phase-4.md).
+
+[AI & Analytics Phase 5](docs/microservices-phase-5.md) mô tả hàng đợi tài liệu, báo cáo và cách quay lui.
+
+[Production & DevOps Phase 6](docs/microservices-phase-6.md) mô tả CI, monitoring và quy trình triển khai theo digest đã kiểm chứng.
 
 1. Khởi chạy cụm dịch vụ Web hệ thống:
 ```bash

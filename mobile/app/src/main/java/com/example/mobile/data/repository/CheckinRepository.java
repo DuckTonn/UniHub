@@ -1,7 +1,6 @@
 package com.example.mobile.data.repository;
 
 import android.content.Context;
-import android.util.Log;
 
 import androidx.work.Constraints;
 import androidx.work.NetworkType;
@@ -43,7 +42,6 @@ public class CheckinRepository {
             public void onResponse(Call<List<AttendeeResponse>> call, Response<List<AttendeeResponse>> response) {
                 if (response.isSuccessful() && response.body() != null) {
                     new Thread(() -> {
-                        attendeeDao.deleteByWorkshopId(workshopId);
                         List<AttendeeEntity> entities = new ArrayList<>();
                         for (AttendeeResponse dto : response.body()) {
                             AttendeeEntity entity = new AttendeeEntity(
@@ -59,7 +57,7 @@ public class CheckinRepository {
                             entity.setSynced(dto.isCheckedIn()); 
                             entities.add(entity);
                         }
-                        attendeeDao.insertAll(entities);
+                        attendeeDao.refreshRoster(workshopId, entities);
                         callback.onSuccess();
                     }).start();
                 } else {

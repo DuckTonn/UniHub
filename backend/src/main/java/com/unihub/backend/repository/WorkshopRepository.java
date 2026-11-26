@@ -98,11 +98,6 @@ public interface WorkshopRepository extends JpaRepository<Workshop, Long> {
     @Query("SELECT w FROM Workshop w JOIN FETCH w.room WHERE w.id = :id")
     Optional<Workshop> findByIdWithRoom(@Param("id") Long id);
 
-    @Modifying(clearAutomatically = true, flushAutomatically = true)
-    @Query("UPDATE Workshop w SET w.description = :description WHERE w.id = :id")
-    void updateDescription(@Param("id") Long id, @Param("description") String description);
-
-
         @Query("""
             select w from Workshop w
             join fetch w.room

@@ -14,6 +14,12 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     Optional<Payment> findByIdempotencyKey(String idempotencyKey);
     Optional<Payment> findByRegistrationId(Long registrationId);
 
+    @Query("select p.id from Payment p where p.status = 'PROCESSING' order by p.id")
+    List<Long> findProcessingIds();
+
+    @Query("select p.registration.workshop.id from Payment p where p.id = :id")
+    Optional<Long> findWorkshopId(@Param("id") Long id);
+
     /**
      * Count COMPLETED payments linked to registrations of a specific workshop.
      * Used during workshop cancellation to identify paid registrants requiring refund.
