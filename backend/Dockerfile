@@ -10,8 +10,10 @@ RUN mvn clean package -DskipTests
 
 # Stage 2: Run application
 FROM eclipse-temurin:25-jre-alpine
+LABEL org.opencontainers.image.source="https://github.com/DuckTonn/UniHub"
 WORKDIR /app
 # Copy file jar from stage build
 COPY --from=build /app/target/*.jar app.jar
 EXPOSE 8080
+USER 10001:10001
 ENTRYPOINT ["java", "-jar", "app.jar"]

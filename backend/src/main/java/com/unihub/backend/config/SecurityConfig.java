@@ -7,8 +7,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -25,6 +28,7 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final RateLimiterFilter rateLimiterFilter;
+    private final Environment environment;
 
     @Value("${spring.application.frontend-url}")
     private String frontendUrl;
@@ -37,16 +41,18 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        boolean production = environment.acceptsProfiles(Profiles.of("prod"));
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/health/liveness", "/actuator/health/readiness").permitAll()
+                        .requestMatchers("/actuator/health/**", "/actuator/prometheus").permitAll()
                         .requestMatchers("/api/test").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/api/v1/telegram/webhook").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/v1/payments/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/payments/**")
+                        .access((authentication, context) -> new AuthorizationDecision(!production))
                         .requestMatchers(HttpMethod.GET, "/api/v1/workshops").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/workshops/**").permitAll()
                         .requestMatchers(SWAGGER_WHITELIST).permitAll()
@@ -66,13 +72,13 @@ public class SecurityConfig {
     public org.springframework.web.cors.CorsConfigurationSource corsConfigurationSource() {
         org.springframework.web.cors.CorsConfiguration configuration = new org.springframework.web.cors.CorsConfiguration();
 
-        // Frontend Vite (Local) and Mobile App
-        configuration.setAllowedOriginPatterns(java.util.List.of(frontendUrl, "*"));
+        configuration.setAllowedOrigins(java.util.List.of(frontendUrl));
 
         // Basic method HTTP
         configuration.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
 
         configuration.setAllowedHeaders(java.util.List.of("Authorization", "Content-Type", "Accept", "Idempotency-Key"));
+        configuration.setExposedHeaders(java.util.List.of("X-Request-ID", "Retry-After"));
 
         configuration.setAllowCredentials(true);
 

@@ -16,11 +16,11 @@ import java.util.Optional;
 public class PaymentService {
 
     private final RegistrationService registrations;
-    private final PaymentGatewayClient provider;
+    private final Optional<PaymentGatewayClient> provider;
     private final PaymentGatewayCircuitBreaker circuitBreaker;
 
     public PaymentResultResponse pay(Long workshopId, Long userId, String key) {
-        var attempt = registrations.beginPayment(workshopId, userId, key);
+        var attempt = registrations.beginPayment(workshopId, userId, key, provider.isPresent());
         if (attempt.settled() != null) {
             return toApiResult(attempt.settled());
         }
@@ -31,6 +31,9 @@ public class PaymentService {
     }
 
     public void reconcile(Long paymentId) {
+        if (provider.isEmpty()) {
+            return;
+        }
         registrations.reconciliationAttempt(paymentId).ifPresent(attempt ->
                 readProviderOutcome(attempt)
                         .ifPresent(result -> settle(paymentId, result)));
@@ -38,7 +41,8 @@ public class PaymentService {
 
     private Optional<PaymentGatewayResult> readProviderOutcome(RegistrationService.PaymentAttempt attempt) {
         try {
-            return provider.reconcile(attempt.amount(), attempt.key(), attempt.closeIfMissing());
+            return provider.orElseThrow(this::unavailable)
+                    .reconcile(attempt.amount(), attempt.key(), attempt.closeIfMissing());
         } catch (DataAccessException exception) {
             throw unavailable();
         }
@@ -49,7 +53,7 @@ public class PaymentService {
             throw unavailable();
         }
         try {
-            var result = provider.charge(attempt.amount(), attempt.key());
+            var result = provider.orElseThrow(this::unavailable).charge(attempt.amount(), attempt.key());
             requireDefinitiveResult(result);
             circuitBreaker.recordSuccess();
             return result;

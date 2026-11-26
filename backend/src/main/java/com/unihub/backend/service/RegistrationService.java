@@ -114,7 +114,7 @@ public class RegistrationService {
     record PaymentAttempt(Long id, String key, long amount, boolean closeIfMissing, PaymentResultResponse settled) {}
 
     @Transactional
-    public PaymentAttempt beginPayment(Long workshopId, Long userId, String idempotencyKey) {
+    public PaymentAttempt beginPayment(Long workshopId, Long userId, String idempotencyKey, boolean providerAvailable) {
         Workshop workshop = lockWorkshop(workshopId);
         Payment payment = paymentRepository.findByIdempotencyKey(idempotencyKey)
                 .filter(p -> workshopId.equals(p.getRegistration().getWorkshop().getId())
@@ -124,6 +124,9 @@ public class RegistrationService {
 
         if (List.of("COMPLETED", "FAILED").contains(payment.getStatus())) {
             return new PaymentAttempt(payment.getId(), idempotencyKey, 0, false, storedPaymentResult(payment));
+        }
+        if (!providerAvailable) {
+            throw new PaymentGatewayUnavailableException("Payment gateway unavailable");
         }
         if ("CANCELLED".equals(workshop.getStatus())) {
             throw new ConflictException("Workshop has been cancelled. Payment cannot be processed.");

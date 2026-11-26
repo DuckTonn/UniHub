@@ -7,7 +7,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.data.redis.core.script.RedisScript;
@@ -23,7 +23,6 @@ import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
-@Slf4j
 public class RateLimiterFilter extends OncePerRequestFilter {
 
     private static final String RATELIMIT_PREFIX = "ratelimit:";
@@ -66,8 +65,8 @@ public class RateLimiterFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        String path = request.getServletPath();
-        return "/actuator/health/liveness".equals(path) || "/actuator/health/readiness".equals(path);
+        String path = applicationPath(request);
+        return !path.startsWith("/api/");
     }
 
     @Override
@@ -76,7 +75,7 @@ public class RateLimiterFilter extends OncePerRequestFilter {
                                     FilterChain filterChain)
             throws ServletException, IOException {
 
-        String path = request.getRequestURI();
+        String path = applicationPath(request);
         int[] rule = resolveRule(path);
         int limit = rule[0];
         int windowSeconds = rule[1];
@@ -89,34 +88,43 @@ public class RateLimiterFilter extends OncePerRequestFilter {
         // Sliding window: remove entries older than window, count current
         String rateKeyMember = nowMs + "-" + UUID.randomUUID().toString().substring(0, 6);
 
-        Long allowed = redis.execute(
-            LUA_REDIS_SCRIPT,
-            List.of(rateKey),
-            String.valueOf(nowMs),
-            String.valueOf(windowStartMs),
-            rateKeyMember,
-            String.valueOf(limit),
-            String.valueOf(windowSeconds + 5)
-        );
+        Long allowed;
+        try {
+            allowed = redis.execute(
+                LUA_REDIS_SCRIPT,
+                List.of(rateKey),
+                String.valueOf(nowMs),
+                String.valueOf(windowStartMs),
+                rateKeyMember,
+                String.valueOf(limit),
+                String.valueOf(windowSeconds + 5)
+            );
+        } catch (DataAccessException error) {
+            response.setHeader("Retry-After", "3");
+            writeError(response, HttpStatus.SERVICE_UNAVAILABLE, "API temporarily unavailable");
+            return;
+        }
 
         if (allowed != null && allowed == 0L) {
-            log.warn("Rate limit exceeded for identifier={}, path={}", identifier, path);
-            response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
-            response.setContentType("application/json");
-            response.setCharacterEncoding("UTF-8");
-
-            ErrorResponse error = ErrorResponse.builder()
-                    .timestamp(Instant.now())
-                    .status(429)
-                    .error("Too Many Requests")
-                    .message("Rate limit exceeded. Please try again later.")
-                    .build();
-
-            response.getWriter().write(objectMapper.writeValueAsString(error));
+            response.setHeader("Retry-After", String.valueOf(windowSeconds));
+            writeError(response, HttpStatus.TOO_MANY_REQUESTS, "Rate limit exceeded. Please try again later.");
             return;
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private void writeError(HttpServletResponse response, HttpStatus status, String message) throws IOException {
+        response.setStatus(status.value());
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        ErrorResponse error = ErrorResponse.builder().timestamp(Instant.now()).status(status.value())
+                .error(status.getReasonPhrase()).message(message).build();
+        response.getWriter().write(objectMapper.writeValueAsString(error));
+    }
+
+    private String applicationPath(HttpServletRequest request) {
+        return request.getRequestURI().substring(request.getContextPath().length());
     }
 
     private int[] resolveRule(String path) {

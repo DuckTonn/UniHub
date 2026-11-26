@@ -82,7 +82,7 @@ class PaymentAttendanceIntegrationTest {
     void reconciliationFindsAChargeAfterTheApplicationTransactionRollsBack() {
         var student = students.getFirst();
         String key = registrations.register(workshopId, student).getIdempotencyKey();
-        var attempt = registrations.beginPayment(workshopId, student, key);
+        var attempt = registrations.beginPayment(workshopId, student, key, true);
         var charge = provider.charge(attempt.amount(), attempt.key());
         transaction.executeWithoutResult(status -> {
             registrations.settlePayment(attempt.id(), charge);
@@ -105,7 +105,7 @@ class PaymentAttendanceIntegrationTest {
     void reconciliationClosesAnExpiredUnchargedAttemptAgainstLateDelivery() {
         var student = students.getFirst();
         String key = registrations.register(workshopId, student).getIdempotencyKey();
-        var attempt = registrations.beginPayment(workshopId, student, key);
+        var attempt = registrations.beginPayment(workshopId, student, key, true);
         payments.reconcile(attempt.id());
         assertThat(provider.reconcile(attempt.amount(), attempt.key(), false)).isEmpty();
         ageHold();
@@ -121,7 +121,7 @@ class PaymentAttendanceIntegrationTest {
     void chargeRecoveredAfterWorkshopCancellationIsFlaggedWithoutAnAdmissionTicket() {
         var student = students.getFirst();
         String key = registrations.register(workshopId, student).getIdempotencyKey();
-        var attempt = registrations.beginPayment(workshopId, student, key);
+        var attempt = registrations.beginPayment(workshopId, student, key, true);
         var charge = transaction.execute(status -> {
             workshops.cancelWorkshop(workshopId);
             return provider.charge(attempt.amount(), attempt.key());

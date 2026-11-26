@@ -34,7 +34,7 @@ spring:
     hibernate:
       # Close auto DDL Generation
       ddl-auto: validate
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
         format_sql: true
@@ -117,6 +117,10 @@ analytics:
     enabled: ${ANALYTICS_PROJECTION_ENABLED:true}
 
 management:
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
   endpoints:
     web:
       exposure:
@@ -128,3 +132,7 @@ management:
       group:
         readiness:
           include: readinessState,db,redis
+
+logging:
+  pattern:
+    level: "%5p [request_id=%X{requestId:-}]"
