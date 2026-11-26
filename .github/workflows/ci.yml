@@ -46,8 +46,11 @@ jobs:
           from pathlib import Path
           npm = json.loads(Path("audit/npm.json").read_text())
           python = json.loads(Path("audit/python.json").read_text())
-          print("npm advisories by severity:", npm["metadata"]["vulnerabilities"])
+          severity = npm["metadata"]["vulnerabilities"]
+          print("npm advisories by severity:", severity)
           print("Python advisory count:", sum(len(package["vulns"]) for package in python["dependencies"]))
+          if severity["high"] or severity["critical"]:
+              raise SystemExit("High or critical npm production advisories must be addressed before release")
           PY
       - uses: actions/upload-artifact@v6
         if: always()
