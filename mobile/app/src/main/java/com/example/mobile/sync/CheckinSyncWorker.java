@@ -15,10 +15,12 @@ import com.example.mobile.data.remote.RetrofitClient;
 import com.example.mobile.data.remote.dto.CheckinSyncRequest;
 import com.example.mobile.data.remote.dto.CheckinSyncResponse;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import retrofit2.Response;
 
@@ -54,7 +56,8 @@ public class CheckinSyncWorker extends Worker {
             grouped.get(wId).add(entity);
         }
 
-        boolean allSuccess = true;
+        boolean rejected = false;
+        boolean retryable = false;
 
         for (Map.Entry<Long, List<AttendeeEntity>> entry : grouped.entrySet()) {
             Long workshopId = entry.getKey();
@@ -69,22 +72,31 @@ public class CheckinSyncWorker extends Worker {
             try {
                 Response<CheckinSyncResponse> response = apiService.syncCheckins(request).execute();
                 if (response.isSuccessful() && response.body() != null) {
-                    // Update local DB
+                    var submitted = entities.stream().map(AttendeeEntity::getQrCode).collect(Collectors.toSet());
+                    var acknowledged = response.body().acknowledgedCodes(submitted);
                     for (AttendeeEntity e : entities) {
-                        e.setSynced(true);
-                        dao.update(e);
+                        if (acknowledged.contains(e.getQrCode())) {
+                            dao.acknowledgeScan(e.getQrCode(), workshopId, e.getScannedAt());
+                        }
                     }
-                    Log.d(TAG, "Sync success for workshop " + workshopId + ": " + response.body().getSuccessCount() + " synced");
+                    rejected |= acknowledged.size() < submitted.size();
                 } else {
                     Log.e(TAG, "Sync failed for workshop " + workshopId + ": " + response.code());
-                    allSuccess = false;
+                    if (response.code() == 429 || response.code() >= 500 || response.isSuccessful()) {
+                        retryable = true;
+                    } else {
+                        rejected = true;
+                    }
                 }
-            } catch (Exception e) {
-                Log.e(TAG, "Exception during sync", e);
-                allSuccess = false;
+            } catch (IOException | IllegalArgumentException exception) {
+                Log.w(TAG, "Could not confirm check-in batch for workshop " + workshopId);
+                retryable = true;
             }
         }
 
-        return allSuccess ? Result.success() : Result.failure();
+        if (retryable && getRunAttemptCount() < 4) {
+            return Result.retry();
+        }
+        return rejected || retryable ? Result.failure() : Result.success();
     }
 }

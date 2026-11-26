@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -90,11 +91,12 @@ def main(base, env_file, student_id, admin_id):
 
     if "IDENTITY_FIXTURE_PASSWORD" in os.environ:
         web_access = verify_client_login(base, "web", "web-login@example.test", "STUDENT")
-        verify_client_login(base, "app", "app-login@example.test", "STAFF")
+        staff_access = verify_client_login(base, "app", "app-login@example.test", "STAFF")
         for client, email in (("web", "app-login@example.test"), ("app", "web-login@example.test")):
             request(base, f"/api/v1/auth/login/{client}", 403, method="POST",
                     data={"email": email, "password": os.environ["IDENTITY_FIXTURE_PASSWORD"]})
         verify_outbox_registration(base, web_access, student, os.environ["OUTBOX_FIXTURE_WORKSHOP"])
+        verify_payment_and_checkin(base, web_access, staff_access, student, os.environ["PAYMENT_FIXTURE_WORKSHOP"])
 
     for path in ("/actuator/health", "/summarize"):
         _, headers = request(base, path, 200)
@@ -136,6 +138,34 @@ def verify_outbox_registration(base, token, competing_token, workshop_id):
             return
         time.sleep(3)
     raise AssertionError("No registration notification arrived from the outbox")
+
+
+def verify_payment_and_checkin(base, web_access, staff_access, another_student, workshop_id):
+    assert workshop_id.isdigit(), "Paid workshop fixture is missing"
+    workshop = f"/api/v1/workshops/{workshop_id}"
+    pending, _ = request(base, f"{workshop}/register", 202, token=web_access, method="POST")
+    key = json.loads(pending)["idempotencyKey"]
+    headers = {"Idempotency-Key": key}
+    request(base, f"{workshop}/pay", 404, token=another_student, method="POST", headers=headers)
+    first, _ = request(base, f"{workshop}/pay", 200, token=web_access, method="POST", headers=headers)
+    repeat, _ = request(base, f"{workshop}/pay", 200, token=web_access, method="POST", headers=headers)
+    payment = json.loads(first)
+    assert payment == json.loads(repeat)
+    assert payment["success"] and payment["transactionId"] and payment["qrCode"].startswith("QR-")
+
+    scanned_at = datetime.now().isoformat(timespec="seconds")
+    batch = {"workshopId": int(workshop_id), "records": [
+        {"qrCode": payment["qrCode"], "scannedAt": scanned_at},
+        {"qrCode": "unknown-ticket", "scannedAt": scanned_at},
+    ]}
+    path = "/api/v1/checkins/sync"
+    request(base, path, 400, token=web_access, method="POST", data=batch)
+    for success, duplicate in ((1, 0), (0, 1)):
+        body, _ = request(base, path, 200, token=staff_access, method="POST", data=batch)
+        result = json.loads(body)
+        assert result["totalReceived"] == 2 and result["failedCount"] == 1
+        assert result["successCount"] == success and result["duplicateCount"] == duplicate
+        assert result["failures"][0]["qrCode"] == "unknown-ticket"
 
 
 if __name__ == "__main__":
