@@ -5,6 +5,26 @@ spring:
   config:
     import: optional:file:.env[.properties]
 
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    connection-timeout: 3s
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        default-requeue-rejected: false
+        missing-queues-fatal: false
+        retry:
+          enabled: true
+          max-retries: 3
+          initial-interval: 1s
+          multiplier: 2
+
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/postgres}
     username: ${DB_USERNAME:postgres}
@@ -69,6 +89,8 @@ sync:
     read-timeout-ms: 30000
 
 notification:
+  outbox:
+    enabled: ${NOTIFICATION_OUTBOX_ENABLED:false}
   email:
     enabled: ${NOTIFICATION_EMAIL_ENABLED:true}
   telegram:

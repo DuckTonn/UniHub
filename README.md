@@ -55,9 +55,9 @@
 ## ✨ Tính năng nổi bật
 
 ### 🖥️ Hệ thống (Core Infrastructure)
-- **Kiểm soát tải & Zero-Overbooking:** Áp dụng Rate Limiting chặn spam và dùng Redis Lua Script xử lý tranh chấp ghế đồng thời (Seat Contention), đảm bảo chịu tải cao và tuyệt đối không bán lố vé.
+- **Kiểm soát tải và giữ chỗ:** Redis xử lý rate limiting. PostgreSQL khóa hàng workshop để cấp chỗ và cập nhật số chỗ trong cùng giao dịch với đăng ký.
 
-- **Chống trừ tiền hai lần (Idempotency):** Bảo vệ các giao dịch tài chính thông qua Idempotency Key lưu trên Redis, đảm bảo an toàn tuyệt đối ngay cả khi người dùng spam nút thanh toán hoặc rớt mạng.
+- **Idempotency thanh toán:** PostgreSQL lưu khóa idempotency và trả lại kết quả đã hoàn tất khi client gửi lại cùng khóa. Các trường hợp nhà cung cấp chưa xác định được kết quả cần được đối soát.
 
 - **Tự phục hồi & Chịu lỗi (Fault Tolerance):** Tích hợp Circuit Breaker bảo vệ luồng chính không bị sập dây chuyền khi cổng thanh toán hoặc các API bên ngoài gặp sự cố (Timeout/Unavailable).
 
@@ -123,7 +123,7 @@ flowchart LR
     end
 
     DB[("PostgreSQL<br/>(Primary Data)")]
-    Redis[("Redis<br/>(Rate Limit, Lua Lock, Cache)")]
+    Redis[("Redis<br/>(Rate Limit, Cache)")]
 
     subgraph AIMicroservice["AI Microservice"]
         AI["FastAPI<br/>(PDF Processing)"]
@@ -140,7 +140,7 @@ flowchart LR
     LB -->|Reverse Proxy| Core
 
     Core <--> |JDBC / ACID Transactions| DB
-    Core <--> |Redisson / Jedis| Redis
+    Core <--> |Redis client| Redis
 
     Core -->|REST Async| AI
     AI -->|API Call| LLM
@@ -232,7 +232,7 @@ Sao chép file `.env.example` ở thư mục gốc thành `.env.production` (cho
 - **Lưu ý:** Phải cài đặt môi trường (file `.env` tại các thư mục và file `.env.production` tại root) như phần `🔧 Yêu cầu môi trường` trước khi chạy dự án.
 
 ### Phương án 1: Chạy bằng Docker (Khuyên dùng cho Production/Test nhanh)
-Docker Compose chạy Nginx/React, Spring Cloud Gateway, backend, FastAPI và Redis. Cấu hình PostgreSQL bên ngoài qua DB_URL. Xem [kiến trúc, kiểm tra và rollback Phase 1](docs/microservices-phase-1.md).
+Docker Compose chạy Nginx/React, Spring Cloud Gateway, backend, FastAPI và Redis. Cấu hình PostgreSQL bên ngoài qua DB_URL. Xem [kiến trúc, kiểm tra và rollback Phase 1](docs/microservices-phase-1.md), [cấu hình Identity & Notification Phase 2](docs/microservices-phase-2.md) và [Workshop & Registration Phase 3](docs/microservices-phase-3.md).
 
 1. Khởi chạy cụm dịch vụ Web hệ thống:
 ```bash

@@ -26,12 +26,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -47,7 +44,6 @@ public class WorkshopService {
     private final RoomRepository roomRepository;
     private final RegistrationRepository registrationRepository;
     private final PaymentRepository paymentRepository;
-    private final SeatLockingService seatLockingService;
     private final ApplicationEventPublisher eventPublisher;
 
     // ────────────── Admin ──────────────
@@ -199,18 +195,12 @@ public class WorkshopService {
 
         Workshop saved = workshopRepository.save(workshop);
 
-        // 4. Initialize Redis slot counter with TTL
-        long ttlSeconds = computeSlotTtl(saved);
-        seatLockingService.initSlots(String.valueOf(saved.getId()), saved.getTotalSlots(), ttlSeconds);
-        log.info("Initialized Redis slots for workshop {}: total={}, TTL={}s", saved.getId(), saved.getTotalSlots(),
-                ttlSeconds);
-
         return toResponse(saved);
     }
 
     @Transactional
     public WorkshopResponse updateWorkshop(Long id, WorkshopRequest request) {
-        Workshop workshop = findWorkshopWithRoomOrThrow(id);
+        Workshop workshop = findWorkshopForUpdate(id);
 
         // 1. Lookup Room (maybe the same or different)
         Room room = findRoomOrThrow(request.roomId());
@@ -219,7 +209,10 @@ public class WorkshopService {
         validateBusinessRules(request, room);
 
         int oldTotalSlots = workshop.getTotalSlots();
-        int currentRemainingSlots = getAccurateRemainingSlots(workshop);
+        long occupied = registrationRepository.countByWorkshopIdAndStatusIn(id, List.of("PENDING", "SUCCESS"));
+        if ("PUBLISHED".equals(workshop.getStatus())) {
+            requireAvailableRoom(room.getId(), id, request.startTime(), request.endTime());
+        }
 
         // 3. Check total_slots and workshop status for update rules
         boolean isDraft = "DRAFT".equals(workshop.getStatus());
@@ -250,9 +243,10 @@ public class WorkshopService {
         workshop.setSpeaker(speaker);
         workshop.setTotalSlots(request.totalSlots());
 
-        // Adjust remaining slots based on the delta
-        int delta = request.totalSlots() - oldTotalSlots;
-        workshop.setRemainingSlots(currentRemainingSlots + delta);
+        if (request.totalSlots() < occupied) {
+            throw new ConflictException("Cannot reduce total slots below active registrations");
+        }
+        workshop.setRemainingSlots((int) (request.totalSlots() - occupied));
 
         workshop.setPrice(request.price() != null ? request.price() : 0L);
         workshop.setStartTime(request.startTime());
@@ -263,24 +257,12 @@ public class WorkshopService {
 
         Workshop saved = workshopRepository.save(workshop);
 
-        // 5. Sync slot changes to Redis
-        if (!Integer.valueOf(oldTotalSlots).equals(request.totalSlots())) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    seatLockingService.updateSlots(String.valueOf(id), request.totalSlots(), oldTotalSlots);
-                    log.info("Successfully updated Redis slots for workshop {} after DB commit: {} -> {}",
-                            id, oldTotalSlots, request.totalSlots());
-                }
-            });
-        }
-
         return toResponse(saved);
     }
 
     @Transactional
     public void deleteWorkshop(Long id) {
-        Workshop workshop = findWorkshopOrThrow(id);
+        Workshop workshop = findWorkshopForUpdate(id);
 
         // G10: Only allow deletion of DRAFT workshops
         if (!"DRAFT".equals(workshop.getStatus())) {
@@ -289,9 +271,6 @@ public class WorkshopService {
 
         workshopRepository.delete(workshop);
 
-        // Clean up Redis slot keys
-        seatLockingService.removeSlots(String.valueOf(id));
-        log.info("Removed Redis slots for deleted workshop {}", id);
     }
 
     /**
@@ -300,39 +279,29 @@ public class WorkshopService {
      */
     @Transactional
     public void publishWorkshop(Long id) {
-        Workshop workshop = findWorkshopOrThrow(id);
+        Workshop workshop = findWorkshopForUpdate(id);
 
         if (!"DRAFT".equals(workshop.getStatus())) {
             throw new IllegalArgumentException(
                     "Only DRAFT workshops can be published. Current status: " + workshop.getStatus());
         }
 
+        Room room = findRoomOrThrow(workshop.getRoom().getId());
+        if (workshop.getTotalSlots() > room.getCapacity()) {
+            throw new ConflictException("Workshop total slots exceed room capacity");
+        }
+        requireAvailableRoom(room.getId(), id, workshop.getStartTime(), workshop.getEndTime());
         workshop.setStatus("PUBLISHED");
         workshopRepository.save(workshop);
         log.info("Workshop {} has been published.", id);
     }
 
     /**
-     * Cancel a workshop (G8/G9).
-     *
-     * <p>
-     * Luồng hủy:
-     * <ol>
-     * <li>Only allow cancelling workshops in DRAFT or PUBLISHED state.</li>
-     * <li>Update {@code status = CANCELLED} in the workshops table.</li>
-     * <li>Find all registrations for the workshop in SUCCESS or PENDING
-     * state and update them to CANCELLED (bulk update).</li>
-     * <li>Keep COMPLETED status payments for refund reconciliation — do not
-     * update the payments table.</li>
-     * <li>Delete Redis key {@code workshop:{id}:slots} to absolutely block new
-     * registrations that are in-flight.</li>
-     * <li>@TODO (Notification Service): Send refund confirmation notification
-     * to all registrants with COMPLETED payment when the workshop has a fee.</li>
-     * </ol>
+     * Cancel a published workshop while preserving completed payments for reconciliation.
      */
     @Transactional
     public void cancelWorkshop(Long id) {
-        Workshop workshop = findWorkshopWithRoomOrThrow(id);
+        Workshop workshop = findWorkshopForUpdate(id);
 
         String currentStatus = workshop.getStatus();
         if (!"PUBLISHED".equals(currentStatus)) {
@@ -364,15 +333,8 @@ public class WorkshopService {
         log.info("Workshop {}: {} COMPLETED payment(s) preserved for refund reconciliation.",
                 id, paidCount);
 
-        // Step 4: Delete Redis key to hard-block in-flight registrations
-        seatLockingService.removeSlots(String.valueOf(id));
-        log.info("Workshop {}: Redis slot key removed — in-flight registrations are hard-blocked.", id);
+        workshop.setRemainingSlots(workshop.getTotalSlots());
 
-        // Step 5: @TODO (Notification Service)
-        // - If workshop has fee (price > 0) and has successful payments,
-        // send refund confirmation notification to all registrants.
-        // - Implement: notificationService.sendRefundConfirmation(workshop,
-        // paidRegistrations);
         if (workshop.getPrice() != null && workshop.getPrice() > 0 && paidCount > 0) {
             log.info("Workshop {} (price={}): {} paid registrant(s) flagged for refund notice.",
                 id, workshop.getPrice(), paidCount);
@@ -394,7 +356,7 @@ public class WorkshopService {
         Workshop workshop = findWorkshopOrThrow(id);
 
         // Read remaining_slots from Redis (authoritative source)
-        int remainingSlots = getAccurateRemainingSlots(workshop);
+        int remainingSlots = workshop.getRemainingSlots();
 
         long registeredCount = registrationRepository.countByWorkshopIdAndStatus(id, "SUCCESS");
 
@@ -463,7 +425,7 @@ public class WorkshopService {
     }
 
     private Room findRoomOrThrow(Long roomId) {
-        return roomRepository.findById(roomId)
+        return roomRepository.findByIdForUpdate(roomId)
                 .orElseThrow(() -> new ResourceNotFoundException("Room not found with id: " + roomId));
     }
 
@@ -519,18 +481,15 @@ public class WorkshopService {
         }
     }
 
-    /**
-     * Compute slot TTL in seconds: (registration_end_time - now) + 24h buffer.
-     */
-    private long computeSlotTtl(Workshop w) {
-        LocalDateTime now = LocalDateTime.now();
-        LocalDateTime end = w.getRegistrationEndTime() != null
-                ? w.getRegistrationEndTime()
-                : w.getEndTime();
-        long seconds = Duration.between(now, end).getSeconds();
-        // Add 24h buffer
-        seconds += Duration.ofHours(24).getSeconds();
-        return Math.max(seconds, 3600); // minimum 1 hour
+    private Workshop findWorkshopForUpdate(Long id) {
+        return workshopRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Workshop not found with id: " + id));
+    }
+
+    private void requireAvailableRoom(Long roomId, Long workshopId, LocalDateTime start, LocalDateTime end) {
+        if (workshopRepository.existsPublishedOverlap(roomId, workshopId, start, end)) {
+            throw new ConflictException("Room is already booked for this workshop time");
+        }
     }
 
     /**
@@ -543,7 +502,7 @@ public class WorkshopService {
     }
 
     private WorkshopResponse toResponse(Workshop w, String userRegistrationStatus, long successfulCount) {
-        int remainingSlots = getAccurateRemainingSlots(w);
+        int remainingSlots = w.getRemainingSlots();
 
         return WorkshopResponse.builder()
                 .id(w.getId())
@@ -581,21 +540,6 @@ public class WorkshopService {
                         registration -> registration.getWorkshop().getId(),
                         registration -> registration.getStatus(),
                         (existing, ignored) -> existing));
-    }
-
-    /**
-     * Get the most accurate remaining slots for a workshop, preferring Redis value
-     * if available.
-     * G19: getRemainingSlots() now returns -1 when key doesn't exist → proper
-     * fallback to DB.
-     */
-    private int getAccurateRemainingSlots(Workshop workshop) {
-        int redisSlots = seatLockingService.getRemainingSlots(String.valueOf(workshop.getId()));
-        if (redisSlots < 0) {
-            // Redis key doesn't exist — fallback to DB
-            return workshop.getRemainingSlots();
-        }
-        return redisSlots;
     }
 
     /**

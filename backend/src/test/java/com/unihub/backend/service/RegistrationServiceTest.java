@@ -5,7 +5,6 @@ import com.unihub.backend.entity.Payment;
 import com.unihub.backend.entity.Registration;
 import com.unihub.backend.entity.User;
 import com.unihub.backend.entity.Workshop;
-import com.unihub.backend.enums.IdempotencyState;
 import com.unihub.backend.event.WorkshopRegistrationSuccessEvent;
 import com.unihub.backend.exception.ConflictException;
 import com.unihub.backend.exception.ResourceNotFoundException;
@@ -29,7 +28,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -64,10 +62,6 @@ class RegistrationServiceTest {
     @Mock
     UserRepository userRepository;
     @Mock
-    SeatLockingService seatLockingService;
-    @Mock
-    IdempotencyService idempotencyService;
-    @Mock
     PaymentGatewayClient paymentGatewayClient;
     @Mock
     ApplicationEventPublisher eventPublisher;
@@ -97,11 +91,9 @@ class RegistrationServiceTest {
     // Spec happy path: free workshop returns QR immediately (HTTP 201).
     void register_freeWorkshop_success() {
         when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
-        when(workshopRepository.findById(workshop.getId())).thenReturn(Optional.of(workshop));
+        when(workshopRepository.findByIdForUpdate(workshop.getId())).thenReturn(Optional.of(workshop));
         when(registrationRepository.existsByUserIdAndWorkshopIdAndStatusIn(user.getId(), workshop.getId(),
                 java.util.List.of("PENDING", "SUCCESS"))).thenReturn(false);
-        when(seatLockingService.reserveSeat(String.valueOf(workshop.getId()), String.valueOf(user.getId())))
-                .thenReturn(true);
 
         Registration saved = Registration.builder().id(1L).qrCode("QR-STATIC").status("SUCCESS").build();
         when(registrationRepository.save(any(Registration.class))).thenReturn(saved);
@@ -119,11 +111,9 @@ class RegistrationServiceTest {
     void register_paidWorkshop_returnsPending() {
         workshop.setPrice(5000L);
         when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
-        when(workshopRepository.findById(workshop.getId())).thenReturn(Optional.of(workshop));
+        when(workshopRepository.findByIdForUpdate(workshop.getId())).thenReturn(Optional.of(workshop));
         when(registrationRepository.existsByUserIdAndWorkshopIdAndStatusIn(user.getId(), workshop.getId(),
                 java.util.List.of("PENDING", "SUCCESS"))).thenReturn(false);
-        when(seatLockingService.reserveSeat(String.valueOf(workshop.getId()), String.valueOf(user.getId())))
-                .thenReturn(true);
         when(registrationRepository.save(any(Registration.class))).thenAnswer(inv -> {
             Registration r = inv.getArgument(0);
             r.setId(2L);
@@ -154,19 +144,19 @@ class RegistrationServiceTest {
 
         assertThrows(UnauthorizedException.class, () -> registrationService.register(workshop.getId(), user.getId()));
 
-        verifyNoInteractions(workshopRepository, registrationRepository, seatLockingService, paymentRepository);
+        verifyNoInteractions(workshopRepository, registrationRepository, paymentRepository);
     }
 
     @Test
     // Spec/API error 404 Not Found: workshop does not exist.
     void register_workshopNotFound_throwsResourceNotFound() {
         when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
-        when(workshopRepository.findById(workshop.getId())).thenReturn(Optional.empty());
+        when(workshopRepository.findByIdForUpdate(workshop.getId())).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class,
                 () -> registrationService.register(workshop.getId(), user.getId()));
 
-        verifyNoInteractions(registrationRepository, seatLockingService, paymentRepository);
+        verifyNoInteractions(registrationRepository, paymentRepository);
     }
 
     @Test
@@ -175,13 +165,12 @@ class RegistrationServiceTest {
     void register_cancelledWorkshop_throwsConflict() {
         workshop.setStatus("CANCELLED");
         when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
-        when(workshopRepository.findById(workshop.getId())).thenReturn(Optional.of(workshop));
+        when(workshopRepository.findByIdForUpdate(workshop.getId())).thenReturn(Optional.of(workshop));
 
         ConflictException ex = assertThrows(ConflictException.class,
                 () -> registrationService.register(workshop.getId(), user.getId()));
         assertTrue(ex.getMessage().contains("cancelled"));
 
-        verify(seatLockingService, never()).reserveSeat(anyString(), anyString());
     }
 
     @Test
@@ -189,7 +178,7 @@ class RegistrationServiceTest {
     // this workshop.
     void register_duplicate_throwsConflict() {
         when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
-        when(workshopRepository.findById(workshop.getId())).thenReturn(Optional.of(workshop));
+        when(workshopRepository.findByIdForUpdate(workshop.getId())).thenReturn(Optional.of(workshop));
         when(registrationRepository.existsByUserIdAndWorkshopIdAndStatusIn(user.getId(), workshop.getId(),
                 java.util.List.of("PENDING", "SUCCESS"))).thenReturn(true);
 
@@ -202,7 +191,7 @@ class RegistrationServiceTest {
         workshop.setRegistrationStartTime(LocalDateTime.now().plusDays(1));
         workshop.setRegistrationEndTime(LocalDateTime.now().plusDays(2));
         when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
-        when(workshopRepository.findById(workshop.getId())).thenReturn(Optional.of(workshop));
+        when(workshopRepository.findByIdForUpdate(workshop.getId())).thenReturn(Optional.of(workshop));
 
         assertThrows(ConflictException.class, () -> registrationService.register(workshop.getId(), user.getId()));
     }
@@ -213,7 +202,7 @@ class RegistrationServiceTest {
         workshop.setRegistrationStartTime(LocalDateTime.now().minusDays(2));
         workshop.setRegistrationEndTime(LocalDateTime.now().minusDays(1));
         when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
-        when(workshopRepository.findById(workshop.getId())).thenReturn(Optional.of(workshop));
+        when(workshopRepository.findByIdForUpdate(workshop.getId())).thenReturn(Optional.of(workshop));
 
         assertThrows(ConflictException.class, () -> registrationService.register(workshop.getId(), user.getId()));
     }
@@ -223,65 +212,64 @@ class RegistrationServiceTest {
     void register_notPublished_throwsConflict() {
         workshop.setStatus("DRAFT");
         when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
-        when(workshopRepository.findById(workshop.getId())).thenReturn(Optional.of(workshop));
+        when(workshopRepository.findByIdForUpdate(workshop.getId())).thenReturn(Optional.of(workshop));
 
         assertThrows(ConflictException.class, () -> registrationService.register(workshop.getId(), user.getId()));
     }
 
     @Test
-    // Spec error 409 Conflict: no seats available (reserveSeat returns false).
+    // Spec error 409 Conflict: no seats available (all seats are occupied).
     void register_noSeats_throwsSeatUnavailable() {
         when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
-        when(workshopRepository.findById(workshop.getId())).thenReturn(Optional.of(workshop));
+        when(workshopRepository.findByIdForUpdate(workshop.getId())).thenReturn(Optional.of(workshop));
         when(registrationRepository.existsByUserIdAndWorkshopIdAndStatusIn(user.getId(), workshop.getId(),
                 java.util.List.of("PENDING", "SUCCESS"))).thenReturn(false);
-        when(seatLockingService.reserveSeat(String.valueOf(workshop.getId()), String.valueOf(user.getId())))
-                .thenReturn(false);
+        when(registrationRepository.countByWorkshopIdAndStatusIn(workshop.getId(), List.of("PENDING", "SUCCESS"))).thenReturn(10L);
 
         assertThrows(SeatUnavailableException.class,
                 () -> registrationService.register(workshop.getId(), user.getId()));
     }
 
     @Test
-    // Spec consistency rule: if DB save fails after seat reservation, release seat
-    // and restore slot count.
-    void register_saveRegistrationFails_releasesSeatAndRestoresSlot() {
+    // Spec consistency rule: if DB save fails after seat reservation, propagate failure
+    // so the enclosing transaction rolls back.
+    void register_saveRegistrationFails_propagatesFailure() {
         when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
-        when(workshopRepository.findById(workshop.getId())).thenReturn(Optional.of(workshop));
+        when(workshopRepository.findByIdForUpdate(workshop.getId())).thenReturn(Optional.of(workshop));
         when(registrationRepository.existsByUserIdAndWorkshopIdAndStatusIn(
                 user.getId(), workshop.getId(), List.of("PENDING", "SUCCESS"))).thenReturn(false);
-        when(seatLockingService.reserveSeat(String.valueOf(workshop.getId()), String.valueOf(user.getId())))
-                .thenReturn(true);
         when(registrationRepository.save(any(Registration.class))).thenThrow(new RuntimeException("db down"));
 
         RuntimeException ex = assertThrows(RuntimeException.class,
                 () -> registrationService.register(workshop.getId(), user.getId()));
         assertEquals("db down", ex.getMessage());
 
-        verify(seatLockingService).releaseSeat(String.valueOf(workshop.getId()), String.valueOf(user.getId()));
-        verify(workshopRepository, times(2)).save(workshop);
-        assertEquals(10, workshop.getRemainingSlots());
+        verify(workshopRepository).save(workshop);
     }
 
     @Test
-    // Spec payment error HTTP 202: Idempotency-Key is already IN_FLIGHT.
-    void processPayment_inFlight_throwsConflict() {
-        String key = UUID.randomUUID().toString();
-        when(idempotencyService.getState(key)).thenReturn(IdempotencyState.IN_FLIGHT);
+    void processPayment_expiredHold_doesNotCharge() {
+        when(workshopRepository.findByIdForUpdate(workshop.getId())).thenReturn(Optional.of(workshop));
+        String key = "expired-key";
+        Registration pending = Registration.builder().workshop(workshop).user(user)
+                .status("PENDING").createdAt(LocalDateTime.now().minusMinutes(11)).build();
+        when(paymentRepository.findByIdempotencyKey(key)).thenReturn(Optional.of(
+                Payment.builder().registration(pending).status("PENDING").build()));
 
         assertThrows(ConflictException.class,
                 () -> registrationService.processPayment(workshop.getId(), user.getId(), key));
+        verifyNoInteractions(paymentGatewayClient);
     }
 
     @Test
     // Spec idempotency: same Idempotency-Key returns previous result and does not
     // call gateway again.
     void processPayment_stateSuccess_returnsStoredResult() {
+        when(workshopRepository.findByIdForUpdate(workshop.getId())).thenReturn(Optional.of(workshop));
         String key = "k-success";
-        Registration reg = Registration.builder().id(11L).qrCode("QR-OLD").build();
+        Registration reg = Registration.builder().id(11L).workshop(workshop).user(user).qrCode("QR-OLD").build();
         Payment p = Payment.builder().id(22L).registration(reg).transactionId("tx-1").status("COMPLETED").build();
 
-        when(idempotencyService.getState(key)).thenReturn(IdempotencyState.SUCCESS);
         when(paymentRepository.findByIdempotencyKey(key)).thenReturn(Optional.of(p));
 
         PaymentResultResponse resp = registrationService.processPayment(workshop.getId(), user.getId(), key);
@@ -293,33 +281,27 @@ class RegistrationServiceTest {
 
     @Test
     // Spec/API error 404 Not Found: Idempotency-Key has no matching payment record.
-    void processPayment_missingPayment_releasesSeat_and_throwsNotFound() {
+    void processPayment_missingPayment_doesNotReleaseSeats() {
+        when(workshopRepository.findByIdForUpdate(workshop.getId())).thenReturn(Optional.of(workshop));
         String key = "missing-key";
-        when(idempotencyService.getState(key)).thenReturn(IdempotencyState.NOT_FOUND);
-        doNothing().when(idempotencyService).markInFlight(eq(key), any(Duration.class));
         when(paymentRepository.findByIdempotencyKey(key)).thenReturn(Optional.empty());
-
-        // ensure workshop found so releaseSeat is called
-        when(workshopRepository.findById(workshop.getId())).thenReturn(Optional.of(workshop));
 
         assertThrows(ResourceNotFoundException.class,
                 () -> registrationService.processPayment(workshop.getId(), user.getId(), key));
 
-        verify(seatLockingService).releaseSeat(String.valueOf(workshop.getId()), String.valueOf(user.getId()));
-        verify(workshopRepository).save(any());
+        verify(workshopRepository, never()).save(any());
     }
 
     @Test
     // Spec happy path: payment succeeds -> registration SUCCESS, QR returned,
     // idempotency stored.
     void processPayment_gatewaySuccess_updatesEntities_and_storesIdempotency() {
+        when(workshopRepository.findByIdForUpdate(workshop.getId())).thenReturn(Optional.of(workshop));
         String key = "key-ok";
-        Registration reg = Registration.builder().id(30L).status("PENDING").workshop(workshop).build();
+        Registration reg = Registration.builder().id(30L).status("PENDING").workshop(workshop).user(user).createdAt(LocalDateTime.now()).build();
         Payment p = Payment.builder().id(40L).registration(reg).amount(1234L).idempotencyKey(key).status("PENDING")
                 .build();
 
-        when(idempotencyService.getState(key)).thenReturn(IdempotencyState.NOT_FOUND);
-        doNothing().when(idempotencyService).markInFlight(eq(key), any(Duration.class));
         when(paymentRepository.findByIdempotencyKey(key)).thenReturn(Optional.of(p));
         when(paymentGatewayClient.charge(1234L)).thenReturn(PaymentGatewayResult.builder()
                 .success(true).transactionId("tx-999").build());
@@ -329,7 +311,6 @@ class RegistrationServiceTest {
         assertEquals("tx-999", resp.getTransactionId());
         verify(paymentRepository).save(argThat(pay -> "COMPLETED".equals(pay.getStatus())));
         verify(registrationRepository).save(argThat(r -> "SUCCESS".equals(r.getStatus()) && r.getQrCode() != null));
-        verify(idempotencyService).storeResult(eq(key), any(IdempotencyResult.class), any(Duration.class));
         verify(eventPublisher).publishEvent(any(WorkshopRegistrationSuccessEvent.class));
     }
 
@@ -337,13 +318,12 @@ class RegistrationServiceTest {
     // Spec error 402 Payment Required: definitive gateway failure marks FAILED and
     // releases seat.
     void processPayment_gatewayFailure_handlesFailure_and_releasesSeat() {
+        when(workshopRepository.findByIdForUpdate(workshop.getId())).thenReturn(Optional.of(workshop));
         String key = "key-fail";
-        Registration reg = Registration.builder().id(50L).status("PENDING").workshop(workshop).build();
+        Registration reg = Registration.builder().id(50L).status("PENDING").workshop(workshop).user(user).createdAt(LocalDateTime.now()).build();
         Payment p = Payment.builder().id(60L).registration(reg).amount(2000L).idempotencyKey(key).status("PENDING")
                 .build();
 
-        when(idempotencyService.getState(key)).thenReturn(IdempotencyState.NOT_FOUND);
-        doNothing().when(idempotencyService).markInFlight(eq(key), any(Duration.class));
         when(paymentRepository.findByIdempotencyKey(key)).thenReturn(Optional.of(p));
         when(paymentGatewayClient.charge(2000L)).thenReturn(PaymentGatewayResult.builder()
                 .success(false).failureReason("card_declined").build());
@@ -354,21 +334,18 @@ class RegistrationServiceTest {
 
         verify(paymentRepository).save(argThat(pay -> "FAILED".equals(pay.getStatus())));
         verify(registrationRepository).save(argThat(r -> "FAILED".equals(r.getStatus())));
-        verify(seatLockingService).releaseSeat(String.valueOf(workshop.getId()), String.valueOf(user.getId()));
-        verify(idempotencyService).storeResult(eq(key), any(IdempotencyResult.class), any(Duration.class));
     }
 
     @Test
     // Spec error 503 Service Unavailable: timeout/unavailable keeps registration
     // PENDING for retry.
     void processPayment_gatewayUnavailable_keepsPendingForRetry() {
+        when(workshopRepository.findByIdForUpdate(workshop.getId())).thenReturn(Optional.of(workshop));
         String key = "key-unavailable";
-        Registration reg = Registration.builder().id(70L).status("PENDING").workshop(workshop).build();
+        Registration reg = Registration.builder().id(70L).status("PENDING").workshop(workshop).user(user).createdAt(LocalDateTime.now()).build();
         Payment p = Payment.builder().id(80L).registration(reg).amount(3000L).idempotencyKey(key).status("PENDING")
                 .build();
 
-        when(idempotencyService.getState(key)).thenReturn(IdempotencyState.NOT_FOUND);
-        doNothing().when(idempotencyService).markInFlight(eq(key), any(Duration.class));
         when(paymentRepository.findByIdempotencyKey(key)).thenReturn(Optional.of(p));
         when(paymentGatewayClient.charge(3000L)).thenReturn(PaymentGatewayResult.builder()
                 .success(false).failureReason("payment_gateway_unavailable").build());
@@ -376,8 +353,6 @@ class RegistrationServiceTest {
         assertThrows(PaymentGatewayUnavailableException.class,
                 () -> registrationService.processPayment(workshop.getId(), user.getId(), key));
 
-        verify(idempotencyService, never()).storeResult(any(), any(), any(Duration.class));
-        verify(seatLockingService, never()).releaseSeat(anyString(), anyString());
         verify(paymentRepository, never())
                 .save(argThat(pay -> "FAILED".equals(pay.getStatus()) || "COMPLETED".equals(pay.getStatus())));
         assertEquals("PENDING", p.getStatus());
@@ -388,13 +363,12 @@ class RegistrationServiceTest {
     // Spec error 503 Service Unavailable: gateway 5xx/circuit-open style result is
     // transient.
     void processPayment_gatewayHttp5_keepsPendingForRetry() {
+        when(workshopRepository.findByIdForUpdate(workshop.getId())).thenReturn(Optional.of(workshop));
         String key = "key-http-5";
-        Registration reg = Registration.builder().id(71L).status("PENDING").workshop(workshop).build();
+        Registration reg = Registration.builder().id(71L).status("PENDING").workshop(workshop).user(user).createdAt(LocalDateTime.now()).build();
         Payment p = Payment.builder().id(81L).registration(reg).amount(3000L).idempotencyKey(key).status("PENDING")
                 .build();
 
-        when(idempotencyService.getState(key)).thenReturn(IdempotencyState.NOT_FOUND);
-        doNothing().when(idempotencyService).markInFlight(eq(key), any(Duration.class));
         when(paymentRepository.findByIdempotencyKey(key)).thenReturn(Optional.of(p));
         when(paymentGatewayClient.charge(3000L)).thenReturn(PaymentGatewayResult.builder()
                 .success(false).failureReason("gateway_http_503").build());
@@ -402,42 +376,35 @@ class RegistrationServiceTest {
         assertThrows(PaymentGatewayUnavailableException.class,
                 () -> registrationService.processPayment(workshop.getId(), user.getId(), key));
 
-        verify(idempotencyService, never()).storeResult(any(), any(), any(Duration.class));
-        verify(seatLockingService, never()).releaseSeat(anyString(), anyString());
         assertEquals("PENDING", p.getStatus());
         assertEquals("PENDING", reg.getStatus());
     }
 
     @Test
     // Spec error 409 Conflict: workshop cancelled before payment is processed.
-    void processPayment_cancelledWorkshop_marksFailedReleasesSeatAndStoresFailure() {
+    void processPayment_cancelledWorkshop_doesNotCharge() {
+        when(workshopRepository.findByIdForUpdate(workshop.getId())).thenReturn(Optional.of(workshop));
         String key = "key-cancelled";
         workshop.setStatus("CANCELLED");
-        Registration reg = Registration.builder().id(72L).status("PENDING").workshop(workshop).build();
+        Registration reg = Registration.builder().id(72L).status("PENDING").workshop(workshop).user(user).createdAt(LocalDateTime.now()).build();
         Payment p = Payment.builder().id(82L).registration(reg).amount(3000L).idempotencyKey(key).status("PENDING")
                 .build();
 
-        when(idempotencyService.getState(key)).thenReturn(IdempotencyState.NOT_FOUND);
-        doNothing().when(idempotencyService).markInFlight(eq(key), any(Duration.class));
         when(paymentRepository.findByIdempotencyKey(key)).thenReturn(Optional.of(p));
 
         ConflictException ex = assertThrows(ConflictException.class,
                 () -> registrationService.processPayment(workshop.getId(), user.getId(), key));
         assertTrue(ex.getMessage().contains("cancelled"));
 
-        verify(paymentRepository).save(argThat(pay -> "FAILED".equals(pay.getStatus())));
-        verify(registrationRepository).save(argThat(r -> "FAILED".equals(r.getStatus())));
-        verify(seatLockingService).releaseSeat(String.valueOf(workshop.getId()), String.valueOf(user.getId()));
-        verify(workshopRepository).save(workshop);
-        verify(idempotencyService, atLeastOnce()).storeResult(eq(key), any(IdempotencyResult.class),
-                any(Duration.class));
+        verify(workshopRepository, never()).save(any());
         verifyNoInteractions(paymentGatewayClient);
     }
 
     @Test
     // Spec UI action: pending registration can be cancelled to release the seat.
     void cancelRegistration_success() {
-        Registration reg = Registration.builder().id(90L).status("PENDING").workshop(workshop).build();
+        when(workshopRepository.findByIdForUpdate(workshop.getId())).thenReturn(Optional.of(workshop));
+        Registration reg = Registration.builder().id(90L).status("PENDING").workshop(workshop).user(user).createdAt(LocalDateTime.now()).build();
         Payment p = Payment.builder().id(100L).registration(reg).amount(4000L).status("PENDING").build();
 
         when(registrationRepository.findByUserIdAndWorkshopIdAndStatus(user.getId(), workshop.getId(), "PENDING"))
@@ -448,7 +415,6 @@ class RegistrationServiceTest {
 
         verify(registrationRepository).save(argThat(r -> "CANCELLED".equals(r.getStatus())));
         verify(paymentRepository).save(argThat(pay -> "CANCELLED".equals(pay.getStatus())));
-        verify(seatLockingService).releaseSeat(String.valueOf(workshop.getId()), String.valueOf(user.getId()));
         verify(workshopRepository).save(workshop);
     }
 
@@ -456,13 +422,14 @@ class RegistrationServiceTest {
     // Spec/API error 404 Not Found: cancelling requires an existing PENDING
     // registration.
     void cancelRegistration_missingPending_throwsResourceNotFound() {
+        when(workshopRepository.findByIdForUpdate(workshop.getId())).thenReturn(Optional.of(workshop));
         when(registrationRepository.findByUserIdAndWorkshopIdAndStatus(user.getId(), workshop.getId(), "PENDING"))
                 .thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class,
                 () -> registrationService.cancelRegistration(workshop.getId(), user.getId()));
 
-        verifyNoInteractions(paymentRepository, seatLockingService);
+        verifyNoInteractions(paymentRepository);
         verify(workshopRepository, never()).save(any());
     }
 
