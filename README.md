@@ -232,11 +232,11 @@ Sao chép file `.env.example` ở thư mục gốc thành `.env.production` (cho
 - **Lưu ý:** Phải cài đặt môi trường (file `.env` tại các thư mục và file `.env.production` tại root) như phần `🔧 Yêu cầu môi trường` trước khi chạy dự án.
 
 ### Phương án 1: Chạy bằng Docker (Khuyên dùng cho Production/Test nhanh)
-Chỉ với 1 lệnh duy nhất, Docker sẽ tự động build và chạy toàn bộ hệ thống (Frontend, Backend, AI Service, Database, Redis, Nginx).
+Docker Compose chạy Nginx/React, Spring Cloud Gateway, backend, FastAPI và Redis. Cấu hình PostgreSQL bên ngoài qua DB_URL. Xem [kiến trúc, kiểm tra và rollback Phase 1](docs/microservices-phase-1.md).
 
 1. Khởi chạy cụm dịch vụ Web hệ thống:
 ```bash
-docker-compose --env-file .env.production up -d --build
+docker compose --env-file .env.production up -d --build --wait
 ```
 Sau khi chạy xong, truy cập Web App tại: http://localhost (Nginx đã tự động handle port 80).
 

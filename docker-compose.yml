@@ -1,45 +1,111 @@
-version: '3.8'
-
 services:
-  # --- Cache / Lock Redis ---
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    command:
+      - sh
+      - -ec
+      - |
+        if [ -n "$${REDIS_PASSWORD}" ]; then
+          exec redis-server --requirepass "$${REDIS_PASSWORD}"
+        fi
+        exec redis-server
+    healthcheck:
+      test: ["CMD-SHELL", "if [ -n \"$$REDIS_PASSWORD\" ]; then export REDISCLI_AUTH=\"$$REDIS_PASSWORD\"; fi; redis-cli ping | grep -qx PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     networks:
-      - unihub-network
+      - cache
 
-  # --- AI Microservice ---
   ai-service:
     build: ./ai-service
-    env_file:
-      - .env.production
+    environment:
+      LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gemini-1.5-flash}
+      LLM_RETRY_ATTEMPTS: ${LLM_RETRY_ATTEMPTS:-3}
+      TZ: ${TZ:-Asia/Ho_Chi_Minh}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).close()"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
     networks:
-      - unihub-network
+      - ai
 
-  # --- Spring Boot Backend ---
   backend:
     build: ./backend
     env_file:
-      - .env.production
+      - ${UNIHUB_ENV_FILE:-.env.production}
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      AI_SERVICE_URL: ${AI_SERVICE_URL:-http://ai-service:8000}
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "3", "-O", "/dev/null", "http://127.0.0.1:8080/actuator/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 40s
     networks:
-      - unihub-network
+      - api
+      - cache
+      - ai
 
-  # --- React Frontend + Nginx Reverse Proxy ---
+  gateway:
+    build: ./gateway
+    environment:
+      BACKEND_URL: http://backend:8080
+      TRUSTED_PROXY_PATTERN: '\Q${NGINX_EDGE_IP:-172.29.86.2}\E'
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "3", "-O", "/dev/null", "http://127.0.0.1:8081/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+    networks:
+      - edge
+      - api
+
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        VITE_TELEGRAM_BOT: ${VITE_TELEGRAM_BOT:-}
     ports:
-      - "80:80"
+      - "${FRONTEND_PORT:-80}:80"
     depends_on:
-      - backend
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "3", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
-      - unihub-network
-
-volumes:
-  pgdata:
+      edge:
+        ipv4_address: ${NGINX_EDGE_IP:-172.29.86.2}
 
 networks:
-  unihub-network:
-    driver: bridge
+  edge:
+    ipam:
+      config:
+        - subnet: ${EDGE_SUBNET:-172.29.86.0/24}
+          ip_range: ${EDGE_IP_RANGE:-172.29.86.128/25}
+  api:
+    internal: true
+  cache:
+    internal: true
+  # Backend and FastAPI need outbound access to PostgreSQL and external providers.
+  ai:
