@@ -2,8 +2,10 @@ package com.unihub.backend.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.DynamicUpdate;
 
 @Entity
+@DynamicUpdate
 @Table(name = "rooms")
 @Getter
 @Setter

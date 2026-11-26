@@ -1,6 +1,8 @@
 package com.unihub.backend.repository;
 
 import com.unihub.backend.entity.Workshop;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -15,6 +17,25 @@ import java.util.Optional;
 
 @Repository
 public interface WorkshopRepository extends JpaRepository<Workshop, Long> {
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select w from Workshop w where w.id = :id")
+    Optional<Workshop> findByIdForUpdate(@Param("id") Long id);
+
+    @Query("""
+            select count(w) > 0 from Workshop w
+            where w.room.id = :roomId and w.id <> :id and w.status = 'PUBLISHED'
+              and w.startTime < :endsAt and w.endTime > :startsAt
+            """)
+    boolean existsPublishedOverlap(@Param("roomId") Long roomId, @Param("id") Long id,
+                                  @Param("startsAt") LocalDateTime startsAt, @Param("endsAt") LocalDateTime endsAt);
+
+    @Modifying
+    @Query("""
+            update Workshop w set w.status = 'COMPLETED'
+            where w.status = 'PUBLISHED' and w.endTime < :now
+            """)
+    int completeEndedWorkshops(@Param("now") LocalDateTime now);
 
     /**
      * Fetch all workshops with their Room eagerly loaded in a single query.
@@ -81,7 +102,6 @@ public interface WorkshopRepository extends JpaRepository<Workshop, Long> {
     @Query("UPDATE Workshop w SET w.description = :description WHERE w.id = :id")
     void updateDescription(@Param("id") Long id, @Param("description") String description);
 
-    List<Workshop> findByStatusAndEndTimeBefore(String status, LocalDateTime time);
 
         @Query("""
             select w from Workshop w
