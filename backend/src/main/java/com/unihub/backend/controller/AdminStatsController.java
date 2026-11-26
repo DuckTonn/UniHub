@@ -2,7 +2,7 @@ package com.unihub.backend.controller;
 
 import com.unihub.backend.config.OpenApiConfig;
 import com.unihub.backend.dto.GlobalStatsResponse;
-import com.unihub.backend.service.GlobalStatsService;
+import com.unihub.backend.service.AnalyticsReportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "Admin Statistics", description = "Global statistics for the admin dashboard.")
 public class AdminStatsController {
 
-    private final GlobalStatsService globalStatsService;
+    private final AnalyticsReportService analytics;
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
@@ -36,6 +36,6 @@ public class AdminStatsController {
             @ApiResponse(responseCode = "403", description = "Forbidden — not ADMIN")
     })
     public ResponseEntity<GlobalStatsResponse> getGlobalStats() {
-        return ResponseEntity.ok(globalStatsService.getGlobalStats());
+        return ResponseEntity.ok(analytics.read());
     }
 }

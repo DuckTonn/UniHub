@@ -3,7 +3,7 @@ package com.unihub.backend.controller;
 import com.unihub.backend.config.OpenApiConfig;
 import com.unihub.backend.dto.*;
 import com.unihub.backend.service.WorkshopService;
-import com.unihub.backend.service.WorkshopAiService;
+import com.unihub.backend.service.WorkshopAiJobs;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -30,7 +30,7 @@ import java.util.List;
 public class AdminWorkshopController {
 
     private final WorkshopService workshopService;
-    private final WorkshopAiService workshopAiService;
+    private final WorkshopAiJobs aiJobs;
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
@@ -170,16 +170,13 @@ public class AdminWorkshopController {
             @ApiResponse(responseCode = "404", description = "Workshop not found",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "413", description = "Payload Too Large (file > 10MB)",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "503", description = "Document queue is full")
     })
     public ResponseEntity<java.util.Map<String, String>> uploadAiSummary(
             @PathVariable Long id,
             @RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
 
-        // 1. Check if workshop exists (Throws 404 if not found)
-        workshopService.getWorkshopById(id);
-
-        // 2. Validate file
         if (file.isEmpty()) {
             throw new IllegalArgumentException("File is empty");
         }
@@ -194,21 +191,28 @@ public class AdminWorkshopController {
             throw new org.springframework.web.multipart.MaxUploadSizeExceededException(maxSize);
         }
 
-        // 3. Read bytes on main thread (before HTTP Request completes and Tomcat deletes temp file)
         byte[] fileBytes;
-        String originalFilename = file.getOriginalFilename();
         try {
             fileBytes = file.getBytes();
         } catch (java.io.IOException e) {
             throw new IllegalArgumentException("Failed to read file content");
         }
 
-        // 4. Process asynchronously
-        workshopAiService.generateSummaryAsync(id, fileBytes, originalFilename);
+        if (!aiJobs.enqueue(id, fileBytes)) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).header("Retry-After", "15")
+                    .body(java.util.Map.of("message", "Document queue is full. Try again shortly."));
+        }
 
         // 5. Return 202 Accepted
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(java.util.Map.of("message", "AI summary is being processed, description will be updated soon."));
+    }
+
+    @GetMapping("/{id}/ai-summary")
+    @PreAuthorize("hasRole('ADMIN')")
+    public WorkshopAiJobs.Status getAiSummaryStatus(@PathVariable Long id) {
+        workshopService.getWorkshopById(id);
+        return aiJobs.status(id);
     }
 
     @GetMapping("/{id}/attendances")

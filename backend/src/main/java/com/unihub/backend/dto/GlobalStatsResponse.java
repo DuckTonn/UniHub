@@ -3,14 +3,17 @@ package com.unihub.backend.dto;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.extern.jackson.Jacksonized;
 
 import java.util.List;
-import java.util.Map;
 
 @Getter
 @Builder
+@Jacksonized
 @Schema(description = "Global statistics across all workshops.")
 public class GlobalStatsResponse {
+
+    private String dataAsOf;
 
     // ── Tổng quan ──────────────────────────────────────────────
     @Schema(description = "Total revenue from COMPLETED payments")
@@ -54,6 +57,7 @@ public class GlobalStatsResponse {
     // ── Inner value objects ──────────────────────────────────────
     @Getter
     @Builder
+    @Jacksonized
     public static class SpeakerStat {
         private String speaker;
         private Long workshopCount;
@@ -61,6 +65,7 @@ public class GlobalStatsResponse {
 
     @Getter
     @Builder
+    @Jacksonized
     public static class RoomUtilization {
         private String roomName;
         private Integer capacity;
@@ -70,6 +75,7 @@ public class GlobalStatsResponse {
 
     @Getter
     @Builder
+    @Jacksonized
     public static class HourlyRegistration {
         private Integer hour;
         private Long count;
@@ -77,6 +83,7 @@ public class GlobalStatsResponse {
 
     @Getter
     @Builder
+    @Jacksonized
     public static class WorkshopFillRate {
         private Long workshopId;
         private String title;

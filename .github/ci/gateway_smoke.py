@@ -32,7 +32,7 @@ def request(base, path, expected_status, *, token=None, method="GET", data=None,
     headers = dict(headers or {})
     if token is not None:
         headers["Authorization"] = f"Bearer {token}"
-    if data is not None:
+    if data is not None and not isinstance(data, bytes):
         headers["Content-Type"] = "application/json"
         data = json.dumps(data).encode()
     req = Request(base + path, data=data, headers=headers, method=method)
@@ -69,7 +69,10 @@ def main(base, env_file, student_id, admin_id):
     # The backend's existing exception handler maps method-level access denial to 400.
     body, _ = request(base, "/api/v1/admin/stats", 400, token=student)
     assert json.loads(body)["message"] == "Access Denied"
-    request(base, "/api/v1/admin/stats", 200, token=admin)
+    body, _ = request(base, "/api/v1/admin/stats", 200, token=admin)
+    stats = json.loads(body)
+    datetime.fromisoformat(stats["dataAsOf"].replace("Z", "+00:00"))
+    assert isinstance(stats["workshopFillRates"], list)
     body, _ = request(base, "/api/v1/admin/stats", 401, token="invalid")
     assert json.loads(body)["error"] == "Invalid token"
     body, _ = request(base, "/api/v1/admin/stats", 401, token=expired)
@@ -97,6 +100,7 @@ def main(base, env_file, student_id, admin_id):
                     data={"email": email, "password": os.environ["IDENTITY_FIXTURE_PASSWORD"]})
         verify_outbox_registration(base, web_access, student, os.environ["OUTBOX_FIXTURE_WORKSHOP"])
         verify_payment_and_checkin(base, web_access, staff_access, student, os.environ["PAYMENT_FIXTURE_WORKSHOP"])
+        verify_document_job(base, admin, web_access, os.environ["PAYMENT_FIXTURE_WORKSHOP"])
 
     for path in ("/actuator/health", "/summarize"):
         _, headers = request(base, path, 200)
@@ -166,6 +170,60 @@ def verify_payment_and_checkin(base, web_access, staff_access, another_student, 
         assert result["totalReceived"] == 2 and result["failedCount"] == 1
         assert result["successCount"] == success and result["duplicateCount"] == duplicate
         assert result["failures"][0]["qrCode"] == "unknown-ticket"
+
+
+def verify_document_job(base, admin, student, workshop_id):
+    workshop = f"/api/v1/admin/workshops/{workshop_id}"
+    path = f"{workshop}/ai-summary"
+    request(base, path, 400, token=student)
+    body, _ = request(base, path, 200, token=admin)
+    assert json.loads(body)["status"] == "IDLE"
+
+    boundary = "unihub-smoke-pdf"
+    multipart = (
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="file"; filename="workshop.pdf"\r\n'
+        "Content-Type: application/pdf\r\n\r\n"
+    ).encode() + fixture_pdf() + f"\r\n--{boundary}--\r\n".encode()
+    request(base, path, 400, token=student, method="POST", data=multipart,
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+    request(base, path, 202, token=admin, method="POST", data=multipart,
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+
+    deadline = time.monotonic() + 45
+    while time.monotonic() < deadline:
+        body, _ = request(base, path, 200, token=admin)
+        job = json.loads(body)
+        assert job["status"] != "FAILED", job["error"]
+        if job["status"] == "COMPLETED":
+            body, _ = request(base, workshop, 200, token=admin)
+            assert json.loads(body)["description"].startswith("Workshop document fixture")
+            return
+        time.sleep(2)
+    raise AssertionError("AI document job did not complete")
+
+
+def fixture_pdf():
+    text = b"BT /F1 12 Tf 20 100 Td (Workshop document fixture) Tj ET"
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] "
+        b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        f"<< /Length {len(text)} >>\nstream\n".encode() + text + b"\nendstream",
+    ]
+    pdf = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for number, value in enumerate(objects, 1):
+        offsets.append(len(pdf))
+        pdf.extend(f"{number} 0 obj\n".encode() + value + b"\nendobj\n")
+    xref = len(pdf)
+    pdf.extend(b"xref\n0 6\n0000000000 65535 f \n")
+    for offset in offsets:
+        pdf.extend(f"{offset:010d} 00000 n \n".encode())
+    pdf.extend(f"trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode())
+    return bytes(pdf)
 
 
 if __name__ == "__main__":

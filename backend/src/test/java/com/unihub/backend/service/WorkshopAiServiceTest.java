@@ -1,6 +1,5 @@
 package com.unihub.backend.service;
 
-import com.unihub.backend.repository.WorkshopRepository;
 import com.unihub.backend.dto.ai.AiSummaryResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,103 +10,76 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.Optional;
+
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class WorkshopAiServiceTest {
+    private static final String ENDPOINT = "http://ai-service:8000/summarize";
+    private final WorkshopAiJobs.Job job = new WorkshopAiJobs.Job(7, 1, 1, new byte[] {1, 2});
 
-    @Mock
-    private WorkshopRepository workshopRepository;
-
-    @Mock
-    private RestTemplate restTemplate;
-
-    @InjectMocks
-    private WorkshopAiService workshopAiService;
-
-    private MockMultipartFile mockFile;
-    private final Long workshopId = 1L;
+    @Mock private WorkshopAiJobs jobs;
+    @Mock private RestTemplate restTemplate;
+    @InjectMocks private WorkshopAiService worker;
 
     @BeforeEach
     void setUp() {
-        ReflectionTestUtils.setField(workshopAiService, "aiServiceUrl", "http://ai-service:8000");
-        mockFile = new MockMultipartFile(
-                "file",
-                "test.pdf",
-                "application/pdf",
-                "dummy pdf content".getBytes());
+        ReflectionTestUtils.setField(worker, "aiServiceUrl", "http://ai-service:8000");
+        when(jobs.claim()).thenReturn(Optional.of(job));
     }
 
     @Test
-    void generateSummaryAsync_Success_ShouldUpdateDescription() {
-        // AI-UT-01 & AI-UT-05
-        String expectedSummary = "This is a mock summary from AI.";
-        AiSummaryResponse mockResponse = new AiSummaryResponse();
-        mockResponse.setWorkshop_id(workshopId);
-        mockResponse.setSummary(expectedSummary);
+    void matchingWorkshopUpdatesSummary() {
+        var response = new AiSummaryResponse();
+        response.setWorkshop_id(job.workshopId());
+        response.setSummary("AI summary");
+        when(restTemplate.postForEntity(eq(ENDPOINT), any(HttpEntity.class), eq(AiSummaryResponse.class)))
+                .thenReturn(ResponseEntity.ok(response));
 
-        ResponseEntity<AiSummaryResponse> responseEntity = new ResponseEntity<>(mockResponse, HttpStatus.OK);
+        worker.processNextDocument();
 
-        when(restTemplate.postForEntity(anyString(), any(HttpEntity.class), eq(AiSummaryResponse.class)))
-                .thenReturn(responseEntity);
-
-        // Act
-        workshopAiService.generateSummaryAsync(workshopId, "dummy content".getBytes(), "test.pdf");
-
-        // Assert
-        verify(restTemplate, times(1)).postForEntity(anyString(), any(HttpEntity.class), eq(AiSummaryResponse.class));
-        verify(workshopRepository, times(1)).updateDescription(workshopId, expectedSummary);
+        verify(jobs).complete(job, "AI summary", null);
     }
 
     @Test
-    void generateSummaryAsync_Timeout_ShouldNotThrowExceptionAndNotUpdate() {
-        // AI-UT-02
-        when(restTemplate.postForEntity(anyString(), any(HttpEntity.class), eq(AiSummaryResponse.class)))
-                .thenThrow(new RestClientException("Read timed out"));
+    void mismatchedWorkshopIsNeverUpdated() {
+        var response = new AiSummaryResponse();
+        response.setWorkshop_id(13L);
+        response.setSummary("AI summary");
+        when(restTemplate.postForEntity(eq(ENDPOINT), any(HttpEntity.class), eq(AiSummaryResponse.class)))
+                .thenReturn(ResponseEntity.ok(response));
 
-        // Act
-        workshopAiService.generateSummaryAsync(workshopId, "dummy content".getBytes(), "test.pdf");
+        worker.processNextDocument();
 
-        // Assert
-        verify(restTemplate, times(1)).postForEntity(anyString(), any(HttpEntity.class), eq(AiSummaryResponse.class));
-        verify(workshopRepository, never()).updateDescription(anyLong(), anyString());
+        verify(jobs).fail(job, true, "Invalid response from AI service");
     }
 
     @Test
-    void generateSummaryAsync_ApiReturns500_ShouldNotThrowExceptionAndNotUpdate() {
-        // AI-UT-03
-        ResponseEntity<AiSummaryResponse> responseEntity = new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+    void timeoutsAreRetried() {
+        when(restTemplate.postForEntity(eq(ENDPOINT), any(HttpEntity.class), eq(AiSummaryResponse.class)))
+                .thenThrow(new ResourceAccessException("Connection timeout"));
 
-        when(restTemplate.postForEntity(anyString(), any(HttpEntity.class), eq(AiSummaryResponse.class)))
-                .thenReturn(responseEntity);
+        worker.processNextDocument();
 
-        // Act
-        workshopAiService.generateSummaryAsync(workshopId, "dummy content".getBytes(), "test.pdf");
-
-        // Assert
-        verify(restTemplate, times(1)).postForEntity(anyString(), any(HttpEntity.class), eq(AiSummaryResponse.class));
-        verify(workshopRepository, never()).updateDescription(anyLong(), anyString());
+        verify(jobs).fail(job, true, "AI service is temporarily unavailable");
     }
 
     @Test
-    void generateSummaryAsync_ConnectionRefused_ShouldNotThrowExceptionAndNotUpdate() {
-        // AI-UT-04
-        when(restTemplate.postForEntity(anyString(), any(HttpEntity.class), eq(AiSummaryResponse.class)))
-                .thenThrow(new RestClientException("Connection refused"));
+    void invalidPdfFailsWithoutRetry() {
+        when(restTemplate.postForEntity(eq(ENDPOINT), any(HttpEntity.class), eq(AiSummaryResponse.class)))
+                .thenThrow(new HttpClientErrorException(HttpStatus.BAD_REQUEST));
 
-        // Act
-        workshopAiService.generateSummaryAsync(workshopId, "dummy content".getBytes(), "test.pdf");
+        worker.processNextDocument();
 
-        // Assert
-        verify(restTemplate, times(1)).postForEntity(anyString(), any(HttpEntity.class), eq(AiSummaryResponse.class));
-        verify(workshopRepository, never()).updateDescription(anyLong(), anyString());
+        verify(jobs).fail(job, false, "Could not extract text from PDF file.");
     }
 }

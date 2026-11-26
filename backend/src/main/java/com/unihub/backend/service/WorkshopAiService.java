@@ -1,88 +1,86 @@
 package com.unihub.backend.service;
 
 import com.unihub.backend.dto.ai.AiSummaryResponse;
-import com.unihub.backend.entity.Workshop;
-import com.unihub.backend.repository.WorkshopRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
-import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.client.RestTemplate;
+
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@ConditionalOnProperty(name = "ai.documents.worker-enabled", matchIfMissing = true)
 public class WorkshopAiService {
-
-    private final WorkshopRepository workshopRepository;
+    private final WorkshopAiJobs jobs;
     private final RestTemplate restTemplate;
 
     @Value("${ai.service.url:http://localhost:8000}")
     private String aiServiceUrl;
 
-    @Async
-    @Transactional
-    public void generateSummaryAsync(Long workshopId, byte[] fileBytes, String filename) {
-        try {
-            log.info("Starting AI summary generation for workshop {}", workshopId);
+    @Scheduled(fixedDelay = 1000, scheduler = "aiDocumentScheduler")
+    public void processNextDocument() {
+        jobs.claim().ifPresent(this::process);
+    }
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.MULTIPART_FORM_DATA);
-
-            MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-            body.add("workshop_id", workshopId);
-
-            // Convert byte[] to Resource for RestTemplate
-            ByteArrayResource fileAsResource = new ByteArrayResource(fileBytes) {
-                @Override
-                public String getFilename() {
-                    return filename != null ? filename : "document.pdf";
-                }
-            };
-            body.add("file", fileAsResource);
-
-            HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
-
-            ResponseEntity<AiSummaryResponse> response = restTemplate.postForEntity(
-                    aiServiceUrl + "/summarize", requestEntity, AiSummaryResponse.class);
-
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                AiSummaryResponse aiResp = response.getBody();
-
-                // Always update description (summary)
-                String summary = aiResp.getSummary();
-                if (summary != null && !summary.isBlank()) {
-                    workshopRepository.updateDescription(workshopId, summary);
-                    log.info("Successfully updated description for workshop {}", workshopId);
-                }
-
-                // Only update speaker if AI found one (non-null, non-blank)
-                String speaker = aiResp.getSpeaker();
-                if (speaker != null && !speaker.isBlank()) {
-                    workshopRepository.findById(workshopId).ifPresent(workshop -> {
-                        workshop.setSpeaker(speaker);
-                        workshopRepository.save(workshop);
-                        log.info("Updated speaker for workshop {} to: {}", workshopId, speaker);
-                    });
-                } else {
-                    log.info("AI did not detect a speaker in PDF for workshop {} — keeping existing value.",
-                            workshopId);
-                }
-            } else {
-                log.warn("FastAPI returned non-200 status for workshop {}: {}", workshopId, response.getStatusCode());
+    private void process(WorkshopAiJobs.Job job) {
+        var headers = new HttpHeaders();
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+        var body = new LinkedMultiValueMap<String, Object>();
+        body.add("workshop_id", job.workshopId());
+        body.add("file", new ByteArrayResource(job.document()) {
+            @Override
+            public String getFilename() {
+                return "document.pdf";
             }
+        });
 
-        } catch (Exception e) {
-            log.warn("AI Summary failed for workshop {}: {}", workshopId, e.getMessage());
+        AiSummaryResponse result;
+        try {
+            var response = restTemplate.postForEntity(aiServiceUrl + "/summarize",
+                    new HttpEntity<>(body, headers), AiSummaryResponse.class);
+            result = response.getBody();
+            if (!response.getStatusCode().is2xxSuccessful() || result == null
+                    || !Objects.equals(result.getWorkshop_id(), job.workshopId())) {
+                jobs.fail(job, true, "Invalid response from AI service");
+                return;
+            }
+        } catch (RestClientResponseException error) {
+            int status = error.getStatusCode().value();
+            boolean retry = status >= 500 || status == 429 || status == 408;
+            jobs.fail(job, retry, status == 400 ? "Could not extract text from PDF file." : "AI service request failed");
+            return;
+        } catch (RestClientException error) {
+            jobs.fail(job, true, "AI service is temporarily unavailable");
+            return;
         }
+
+        String summary = boundedText(result.getSummary(), 12_000);
+        if (summary == null) {
+            jobs.fail(job, true, "AI service returned an empty summary");
+            return;
+        }
+        jobs.complete(job, summary, boundedText(result.getSpeaker(), 255));
+        log.info("Processed AI document for workshop {}", job.workshopId());
+    }
+
+    private static String boundedText(String text, int maxCodePoints) {
+        if (text == null) {
+            return null;
+        }
+        String clean = text.replace("\u0000", "").strip();
+        int length = clean.codePointCount(0, clean.length());
+        return length == 0 ? null : clean.substring(0, clean.offsetByCodePoints(0, Math.min(length, maxCodePoints)));
     }
 }

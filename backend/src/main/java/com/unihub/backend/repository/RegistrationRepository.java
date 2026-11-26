@@ -147,6 +147,12 @@ public interface RegistrationRepository extends JpaRepository<Registration, Long
             """)
     long countByWorkshopCompleted();
 
+    @Query("""
+            select count(r) from Registration r join r.checkinRecord
+            where r.status = 'SUCCESS' and r.workshop.status = 'COMPLETED'
+            """)
+    long countCheckedInAtCompletedWorkshops();
+
     /**
      * Count registrations grouped by hour-of-day (0–23) using created_at.
      * Returns Object[] { hour (Integer), count (Long) }.
@@ -169,7 +175,7 @@ public interface RegistrationRepository extends JpaRepository<Registration, Long
             from Workshop w
             where w.speaker is not null and w.speaker <> ''
             group by w.speaker
-            order by count(w.id) desc
+            order by count(w.id) desc, w.speaker
             """)
     List<Object[]> countWorkshopsBySpeaker();
 
@@ -187,7 +193,7 @@ public interface RegistrationRepository extends JpaRepository<Registration, Long
             group by w.room.id, w.room.name, w.room.capacity
             order by avg(case when w.totalSlots > 0
                               then cast((w.totalSlots - w.remainingSlots) as double) / w.totalSlots * 100
-                              else 0.0 end) desc
+                            else 0.0 end) desc, w.room.name
             """)
     List<Object[]> roomUtilizationStats();
 
