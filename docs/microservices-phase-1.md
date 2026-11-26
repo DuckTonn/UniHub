@@ -13,7 +13,7 @@ flowchart LR
     AI --> LLM["Nhà cung cấp LLM"]
 ```
 
-Nginx phục vụ React SPA và đưa nguyên đường dẫn, query string, phương thức, body và các header ứng dụng qua Spring Cloud Gateway. Gateway dùng Spring Boot 4.0.6 và Spring Cloud 2025.1.5. Backend vẫn phát hành và xác thực JWT, cấp access token mới qua refresh token, kiểm tra role và xử lý CORS, rate limit, idempotency. Gateway chuyển tiếp các mã trạng thái và nội dung phản hồi của backend, bao gồm các lỗi 401 mà React và Android dùng để kích hoạt refresh. [Spring Cloud compatibility](https://spring.io/projects/spring-cloud/)
+Nginx phục vụ React SPA và đưa nguyên đường dẫn, query string, phương thức, body và các header ứng dụng qua Spring Cloud Gateway. Gateway dùng Spring Boot 4.0.6 và Spring Cloud 2025.1.5. Backend vẫn phát hành và xác thực JWT, cấp access token mới qua refresh token, kiểm tra role, rate limit và idempotency. Gateway trả lời CORS preflight theo chính sách của backend. Backend tiếp tục xử lý CORS cho các request API thông thường. Gateway chuyển tiếp các mã trạng thái và nội dung phản hồi của backend, bao gồm các lỗi 401 mà React và Android dùng để kích hoạt refresh. [Spring Cloud compatibility](https://spring.io/projects/spring-cloud/)
 
 Nginx là dịch vụ duy nhất publish cổng host. Mạng `edge` nối Nginx với gateway. Mạng nội bộ `api` nối gateway với backend, và `cache` nối backend với Redis. Mạng `ai` nối backend với FastAPI và cho phép outbound để backend gọi PostgreSQL, mail, Telegram và FastAPI gọi LLM. Nginx lấy địa chỉ client từ kết nối đến nó và ghi vào `X-Forwarded-For`. Gateway chỉ giữ header chuyển tiếp từ địa chỉ Nginx cấu hình trên mạng `edge`. Nếu triển khai thêm load balancer, cấu hình Nginx nhận địa chỉ client từ load balancer đáng tin cậy.
 

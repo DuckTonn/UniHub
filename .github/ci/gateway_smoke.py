@@ -83,7 +83,8 @@ def main(base, env_file, student_id, admin_id):
     body, _ = request(base, "/api/v1/auth/refresh", 200, method="POST",
                       data={"refreshToken": refresh})
     new_access_token = json.loads(body)["accessToken"]
-    request(base, "/api/v1/auth/me", 200, token=new_access_token)
+    _, headers = request(base, "/api/v1/auth/me", 200, token=new_access_token, headers={"Origin": origin})
+    assert headers.get_all("Access-Control-Allow-Origin") == [origin]
 
     for path in ("/actuator/health", "/summarize"):
         _, headers = request(base, path, 200)

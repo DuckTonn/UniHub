@@ -98,6 +98,23 @@ class GatewayRoutingTest {
     }
 
     @Test
+    void handlesBrowserPreflightWithTheBackendCorsPolicy() throws Exception {
+        String origin = "https://client.example";
+        var preflight = request("/api/v1/auth/me")
+                .method("OPTIONS", HttpRequest.BodyPublishers.noBody())
+                .header("Origin", origin)
+                .header("Access-Control-Request-Method", "GET");
+        var allowed = send(preflight.copy().header("Access-Control-Request-Headers", "Authorization"));
+        var denied = send(preflight.copy().header("Access-Control-Request-Headers", "X-Unknown"));
+
+        assertThat(allowed.statusCode()).isEqualTo(200);
+        assertThat(allowed.headers().firstValue("Access-Control-Allow-Origin")).contains(origin);
+        assertThat(allowed.headers().firstValue("Access-Control-Allow-Credentials")).contains("true");
+        assertThat(allowed.headers().firstValue("Access-Control-Allow-Headers")).contains("Authorization");
+        assertThat(denied.statusCode()).isEqualTo(403);
+    }
+
+    @Test
     void onlyRoutesApiRequestsAndServesItsOwnHealthProbe() throws Exception {
         var health = send(request("/actuator/health"));
         assertThat(health.statusCode()).isEqualTo(200);
