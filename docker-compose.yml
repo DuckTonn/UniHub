@@ -19,6 +19,24 @@ services:
     networks:
       - cache
 
+  rabbitmq:
+    image: rabbitmq:4-alpine
+    hostname: rabbitmq
+    profiles: [messaging]
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-unihub}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-}
+    healthcheck:
+      test: ["CMD", "su-exec", "rabbitmq", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - messaging
+
   ai-service:
     build: ./ai-service
     environment:
@@ -42,6 +60,9 @@ services:
     env_file:
       - ${UNIHUB_ENV_FILE:-.env.production}
     environment:
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq}
+      RABBITMQ_USER: ${RABBITMQ_USER:-unihub}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-}
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
@@ -59,6 +80,7 @@ services:
       - api
       - cache
       - ai
+      - messaging
 
   gateway:
     build: ./gateway
@@ -97,7 +119,12 @@ services:
       edge:
         ipv4_address: ${NGINX_EDGE_IP:-172.29.86.2}
 
+volumes:
+  rabbitmq-data:
+
 networks:
+  messaging:
+    internal: true
   edge:
     ipam:
       config:
