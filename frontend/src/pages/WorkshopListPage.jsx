@@ -1,10 +1,9 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { lazy, Suspense, useCallback, useState, useMemo } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import workshopService from '../services/workshopService';
 import workshopRegistrationService from '../services/workshopRegistrationService';
-import PaymentModal from '../components/workshops/PaymentModal';
-import WorkshopTicketDialog from '../components/workshops/WorkshopTicketDialog';
-import WorkshopDetailsDialog from '../components/workshops/WorkshopDetailsDialog';
+import { useReadCache, useReadQuery } from '../context/readQueries';
+import DeferredContent from '../components/common/DeferredContent';
 import PaginationControl from '../components/common/PaginationControl';
 
 import WorkshopFilters from '../components/workshops/WorkshopFilters';
@@ -13,6 +12,10 @@ import { isRegistrationClosed } from '../utils/workshopDisplay';
 import './studentExperience.css';
 import './workshopTickets.css';
 import './discovery.css';
+
+const PaymentModal = lazy(() => import('../components/workshops/PaymentModal'));
+const WorkshopTicketDialog = lazy(() => import('../components/workshops/WorkshopTicketDialog'));
+const WorkshopDetailsDialog = lazy(() => import('../components/workshops/WorkshopDetailsDialog'));
 
 const isRegistrationOpen = (w) => {
     try {
@@ -43,31 +46,34 @@ const EMPTY_PAGE = { content: [], totalPages: 0, totalElements: 0 };
 const WorkshopListPage = () => {
     const location = useLocation();
     const requestedWorkshopId = location.state?.workshopId;
-    const openedLocation = useRef(null);
     const [searchParams, setSearchParams] = useSearchParams();
     const filters = useMemo(() => Object.fromEntries(FILTER_NAMES.map((name) => [name, searchParams.get(name) || ''])), [searchParams]);
     const requestedPage = Number(searchParams.get('page') || 0);
     const page = Number.isInteger(requestedPage) && requestedPage >= 0 && requestedPage <= Math.floor(2_147_483_647 / PAGE_SIZE)
         ? requestedPage : 0;
-    const [loadAttempt, setLoadAttempt] = useState(0);
-    const requestKey = `${location.key}:${loadAttempt}`;
-    const [result, setResult] = useState(null);
-    const loading = result?.key !== requestKey;
-    const { content: workshops, totalPages, totalElements, error } = loading ? EMPTY_PAGE : result;
-    const [selectedWorkshop, setSelectedWorkshop] = useState(null);
+    const cache = useReadCache();
+    const query = useMemo(() => Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '')), [filters]);
+    const read = useCallback(() => workshopService.getAll(page, PAGE_SIZE, query), [page, query]);
+    const { data, loading, error: loadError, retry } = useReadQuery('workshops', [page, PAGE_SIZE, query], read);
+    const { content: workshops, totalPages, totalElements } = data ?? EMPTY_PAGE;
+    const error = loadError && (loadError.message || 'We couldn’t load workshops.');
+    const [selection, setSelection] = useState(null);
+    const selectedWorkshop = selection?.locationKey === location.key
+        ? selection.workshop
+        : data?.content?.find((item) => item.id === requestedWorkshopId);
     const handleSelectWorkshop = (workshop) => {
         setRegistrationError('');
-        setSelectedWorkshop(workshop);
+        setSelection({ locationKey: location.key, workshop });
     };
 
-    const handleCloseWorkshop = () => setSelectedWorkshop(null);
+    const handleCloseWorkshop = () => setSelection({ locationKey: location.key, workshop: null });
     const [isRegistering, setIsRegistering] = useState(false);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
     const [registrationData, setRegistrationData] = useState(null);
     const [registrationError, setRegistrationError] = useState('');
 
-    const reload = () => setLoadAttempt((attempt) => attempt + 1);
+    const reload = () => cache.invalidate('workshops', 'registrations', 'notifications');
 
     const handleRegister = async () => {
         if (!selectedWorkshop) return;
@@ -150,25 +156,6 @@ const WorkshopListPage = () => {
         }
     };
 
-    useEffect(() => {
-        let active = true;
-        const query = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== ''));
-        workshopService.getAll(page, PAGE_SIZE, query)
-            .then((data) => {
-                if (!active) return;
-                setResult({ ...EMPTY_PAGE, ...data, key: requestKey });
-                if (requestedWorkshopId != null && openedLocation.current !== location.key) {
-                    openedLocation.current = location.key;
-                    setSelectedWorkshop(data.content?.find((item) => item.id === requestedWorkshopId) || null);
-                }
-            })
-            .catch((err) => {
-                if (active) setResult({ ...EMPTY_PAGE, key: requestKey, error: err.message || 'We couldn’t load workshops.' });
-            });
-
-        return () => { active = false; };
-    }, [filters, page, requestKey, requestedWorkshopId, location.key]);
-
     const applyFilters = (values) => {
         setSearchParams(Object.fromEntries(Object.entries(values).filter(([, value]) => value !== '')));
     };
@@ -207,7 +194,7 @@ const WorkshopListPage = () => {
                 {error && (
                     <div className="student-notice student-notice--error" role="alert">
                         <p>{error}</p>
-                        {!workshops.length && <button className="student-text-link" type="button" onClick={reload}>Try again</button>}
+                        {!workshops.length && <button className="student-text-link" type="button" onClick={retry}>Try again</button>}
                     </div>
                 )}
                 {loading ? (
@@ -239,60 +226,62 @@ const WorkshopListPage = () => {
                 </div>
             </section>
 
-            {selectedWorkshop && (
-                <WorkshopDetailsDialog
-                    workshop={selectedWorkshop}
-                    registerLabel={getRegisterButtonLabel(selectedWorkshop, isRegistering)}
-                    canRegister={selectedWorkshop.remainingSlots !== 0 && !isRegistering
-                        && isRegistrationOpen(selectedWorkshop) && !selectedWorkshop.userRegistrationStatus}
-                    busy={isRegistering}
-                    error={registrationError}
-                    onRegister={handleRegister}
-                    onClose={handleCloseWorkshop}
-                />
-            )}
+            <Suspense fallback={<DeferredContent />}>
+                {selectedWorkshop && (
+                    <WorkshopDetailsDialog
+                        workshop={selectedWorkshop}
+                        registerLabel={getRegisterButtonLabel(selectedWorkshop, isRegistering)}
+                        canRegister={selectedWorkshop.remainingSlots !== 0 && !isRegistering
+                            && isRegistrationOpen(selectedWorkshop) && !selectedWorkshop.userRegistrationStatus}
+                        busy={isRegistering}
+                        error={registrationError}
+                        onRegister={handleRegister}
+                        onClose={handleCloseWorkshop}
+                    />
+                )}
 
-            {/* Payment Modal */}
-            {registrationData && (
-                <PaymentModal
-                    isOpen={showPaymentModal}
-                    workshop={{
-                        title: registrationData.title || 'Workshop',
-                        price: registrationData.amount,
-                    }}
-                    idempotencyKey={registrationData.idempotencyKey}
-                    onClose={async () => {
-                        if (registrationData?.workshopId) {
-                            try {
-                                await workshopRegistrationService.cancelRegistration(registrationData.workshopId);
-                                reload();
-                            } catch (e) {
-                                console.error('Failed to cancel registration:', e);
+                {/* Payment Modal */}
+                {registrationData && showPaymentModal && (
+                    <PaymentModal
+                        isOpen={showPaymentModal}
+                        workshop={{
+                            title: registrationData.title || 'Workshop',
+                            price: registrationData.amount,
+                        }}
+                        idempotencyKey={registrationData.idempotencyKey}
+                        onClose={async () => {
+                            if (registrationData?.workshopId) {
+                                try {
+                                    await workshopRegistrationService.cancelRegistration(registrationData.workshopId);
+                                    reload();
+                                } catch (e) {
+                                    console.error('Failed to cancel registration:', e);
+                                }
                             }
-                        }
-                        setShowPaymentModal(false);
-                        setRegistrationData(null);
-                        setRegistrationError('');
-                    }}
-                    onPaymentSuccess={handlePaymentSuccess}
-                    onPaymentError={(error) => {
-                        setRegistrationError(error.message || 'Payment error');
-                    }}
-                />
-            )}
+                            setShowPaymentModal(false);
+                            setRegistrationData(null);
+                            setRegistrationError('');
+                        }}
+                        onPaymentSuccess={handlePaymentSuccess}
+                        onPaymentError={(error) => {
+                            setRegistrationError(error.message || 'Payment error');
+                        }}
+                    />
+                )}
 
-            {registrationData && showSuccessModal && (
-                <WorkshopTicketDialog
-                    justRegistered
-                    qrCode={registrationData.qrCode}
-                    workshopTitle={registrationData.title || 'Workshop'}
-                    onClose={() => {
-                        setShowSuccessModal(false);
-                        setRegistrationData(null);
-                        setRegistrationError('');
-                    }}
-                />
-            )}
+                {registrationData && showSuccessModal && (
+                    <WorkshopTicketDialog
+                        justRegistered
+                        qrCode={registrationData.qrCode}
+                        workshopTitle={registrationData.title || 'Workshop'}
+                        onClose={() => {
+                            setShowSuccessModal(false);
+                            setRegistrationData(null);
+                            setRegistrationError('');
+                        }}
+                    />
+                )}
+            </Suspense>
         </div>
     );
 };

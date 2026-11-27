@@ -40,6 +40,17 @@ Màu, khoảng cách và viền focus dùng chung đặt trong `frontend/src/ind
 - Chuẩn hóa cache và trạng thái tải, lỗi, thử lại cho dữ liệu đọc. Giữ logic ghi như đăng ký, thanh toán và đánh dấu đã đọc theo hợp đồng API hiện có.
 - Điều kiện nghiệm thu là báo cáo CI theo dõi kích thước JavaScript, LCP và CLS. Mỗi PR vượt ngân sách cần giải thích bằng số liệu trước và sau.
 
+### Đo hiệu năng mốc 3
+
+Trong `frontend`, chạy `npm ci`, `npx playwright install chromium` và `npm run test:performance`. Job `frontend-performance` ghi tóm tắt vào GitHub Actions và lưu báo cáo HTML cùng `summary.json`, kể cả khi vượt ngưỡng.
+
+- Đo bản build production với Lighthouse mobile và Chromium cố định theo lockfile. Mỗi route chạy ba lần với hồ sơ trình duyệt mới. Báo cáo lấy trung vị LCP và CLS, cùng tổng dung lượng gzip lớn nhất của các tệp JavaScript tải trong một lần mở trang.
+- Đo đăng nhập, trang chủ sinh viên, workshop, lịch sử đăng ký, thông báo, dashboard quản trị và analytics. Máy chủ thử nghiệm cung cấp dữ liệu cố định và phiên sinh viên hoặc quản trị giả lập. Các phép đo này không cần `.env` cục bộ hoặc backend đang chạy.
+- Bản mốc 2 (`776d4da`) dùng 261 KiB JavaScript gzip trên cả bảy route. Lần đo mobile cho LCP khoảng 0,75–4,06 giây, CLS cao nhất 0,312 ở dashboard. Tách route quản trị khỏi luồng sinh viên và nạp biểu đồ, chi tiết workshop, thanh toán, QR cùng các hộp thoại quản trị khi dùng. Các trang chính của sinh viên vẫn có trong bundle khởi tạo để tránh thêm lượt tải trước khi hiển thị nội dung.
+- `frontend/performance/budgets.json` lưu ngân sách theo nhóm đăng nhập, sinh viên, quản trị và analytics. Để so sánh một thay đổi, build commit trước với `VITE_API_BASE_URL=/api/v1` và chạy `npm run test:performance -- /duong-dan/den/dist-cu`. Báo cáo ở `frontend/performance-results/baseline/`. Khi đề xuất tăng ngân sách, đính kèm số đo trước và sau từ cùng môi trường cho route bị ảnh hưởng.
+
+Cache dữ liệu đọc dùng bộ nhớ riêng cho mỗi tài khoản, dùng lại kết quả trong 30 giây khi quay lại màn hình và gộp yêu cầu đang chạy trùng nhau. Thao tác ghi tiếp tục gọi API hiện có và xóa các mục cache bị ảnh hưởng. Các màn dùng cache có nút thử lại khi tải lỗi. Tổng chưa đọc trên thanh điều hướng tiếp tục đồng bộ sau thao tác đọc hoặc khi cửa sổ nhận lại focus.
+
 ## 4. Cải thiện vận hành của quản trị viên
 
 - Ưu tiên quy trình kiểm tra workshop, đối soát và check-in theo vai trò. Thêm bộ lọc cho những hồ sơ cần xử lý và hiển thị lỗi của từng giao dịch.

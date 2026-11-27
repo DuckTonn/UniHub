@@ -1,13 +1,17 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { lazy, Suspense, useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import adminWorkshopService from '../services/adminWorkshopService';
 import { useAuth } from '../context/AuthContext';
-import WorkshopFormModal from '../components/workshops/WorkshopFormModal';
-import AttendanceModal from '../components/workshops/AttendanceModal';
+import { useReadCache, useReadQuery } from '../context/readQueries';
+import DeferredContent from '../components/common/DeferredContent';
 import PaginationControl from '../components/common/PaginationControl';
-import CreateAccountModal from '../components/common/CreateAccountModal';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import toast, { Toaster } from 'react-hot-toast';
+import toast from 'react-hot-toast';
+
+const WorkshopFormModal = lazy(() => import('../components/workshops/WorkshopFormModal'));
+const AttendanceModal = lazy(() => import('../components/workshops/AttendanceModal'));
+const CreateAccountModal = lazy(() => import('../components/common/CreateAccountModal'));
+const SeatDistributionChart = lazy(() => import('../components/workshops/SeatDistributionChart'));
+const PAGE_SIZE = 12;
 
 const formatDateTime = (dt) => {
     if (!dt) return '—';
@@ -38,10 +42,16 @@ const statusBadge = (status) => {
 
 const Dashboard = () => {
     const { user } = useAuth();
+    const cache = useReadCache();
     const navigate = useNavigate();
 
-    const [workshops, setWorkshops] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const [page, setPage] = useState(0);
+    const read = useCallback(() => adminWorkshopService.getAll(page, PAGE_SIZE), [page]);
+    const { data, loading, error: readError, retry } = useReadQuery('adminWorkshops', [page, PAGE_SIZE], read);
+    const workshops = data?.content ?? data ?? [];
+    const currentPage = data?.page ?? page;
+    const totalPages = data?.totalPages ?? (workshops.length ? 1 : 0);
+    const totalElements = data?.totalElements ?? workshops.length;
     const [error, setError] = useState('');
     const [modalOpen, setModalOpen] = useState(false);
     const [editingWorkshop, setEditingWorkshop] = useState(null);
@@ -49,12 +59,6 @@ const Dashboard = () => {
     const [deleteConfirm, setDeleteConfirm] = useState(null);
     const [cancelConfirm, setCancelConfirm] = useState(null);
     const [statsData, setStatsData] = useState(null);
-
-    // Pagination state
-    const PAGE_SIZE = 12;
-    const [currentPage, setCurrentPage] = useState(0);
-    const [totalPages, setTotalPages] = useState(0);
-    const [totalElements, setTotalElements] = useState(0);
 
     // AI Summary State
     const [aiUploadOpen, setAiUploadOpen] = useState(false);
@@ -73,25 +77,6 @@ const Dashboard = () => {
         window.addEventListener('click', handleClickOutside);
         return () => window.removeEventListener('click', handleClickOutside);
     }, []);
-
-    const fetchWorkshops = useCallback(async ({ silent = false, page = currentPage } = {}) => {
-        try {
-            if (!silent) setLoading(true);
-            setError('');
-            const data = await adminWorkshopService.getAll(page, PAGE_SIZE);
-            // data is the PageResponse envelope: { content, page, size, totalElements, totalPages, last }
-            setWorkshops(data.content ?? data);
-            setCurrentPage(data.page ?? page);
-            setTotalPages(data.totalPages ?? 1);
-            setTotalElements(data.totalElements ?? (data.content ?? data).length);
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            if (!silent) setLoading(false);
-        }
-    }, [currentPage]);
-
-    useEffect(() => { fetchWorkshops({ page: 0 }); }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
     const handleCreate = () => {
         setEditingWorkshop(null);
@@ -113,8 +98,9 @@ const Dashboard = () => {
                 await adminWorkshopService.create(payload);
                 toast.success('Workshop created successfully!');
             }
+            cache.invalidate('adminWorkshops', 'statistics', 'workshops');
             setModalOpen(false);
-            fetchWorkshops({ page: currentPage });
+            setError('');
         } catch (err) {
             toast.error(err.message || 'Failed to save workshop. Please check your input.');
         } finally {
@@ -125,10 +111,12 @@ const Dashboard = () => {
     const handleDelete = async (id) => {
         try {
             await adminWorkshopService.delete(id);
+            cache.invalidate('adminWorkshops', 'statistics', 'workshops');
             setDeleteConfirm(null);
             // If we deleted the last item on this page, go back one page
             const nextPage = workshops.length === 1 && currentPage > 0 ? currentPage - 1 : currentPage;
-            fetchWorkshops({ page: nextPage });
+            setPage(nextPage);
+            setError('');
         } catch (err) {
             setError(err.message);
             setDeleteConfirm(null);
@@ -138,8 +126,9 @@ const Dashboard = () => {
     const handleCancel = async (id) => {
         try {
             await adminWorkshopService.cancel(id);
+            cache.invalidate('adminWorkshops', 'statistics', 'workshops', 'registrations', 'notifications');
             setCancelConfirm(null);
-            fetchWorkshops({ page: currentPage });
+            setError('');
         } catch (err) {
             setError(err.message);
             setCancelConfirm(null);
@@ -149,7 +138,8 @@ const Dashboard = () => {
     const handlePublish = async (id) => {
         try {
             await adminWorkshopService.publish(id);
-            fetchWorkshops({ page: currentPage });
+            cache.invalidate('adminWorkshops', 'statistics', 'workshops');
+            setError('');
         } catch (err) {
             setError(err.message);
         }
@@ -179,7 +169,7 @@ const Dashboard = () => {
                 if (cancelled) return;
                 setAiStatus(latest);
                 if (latest.status === 'COMPLETED') {
-                    fetchWorkshops({ silent: true });
+                    cache.invalidate('adminWorkshops', 'workshops');
                 } else if (latest.status === 'QUEUED' || latest.status === 'PROCESSING') {
                     timer = setTimeout(poll, 3000);
                 }
@@ -192,7 +182,7 @@ const Dashboard = () => {
             cancelled = true;
             clearTimeout(timer);
         };
-    }, [aiUploadOpen, aiWorkshop, aiUploading, fetchWorkshops]);
+    }, [aiUploadOpen, aiWorkshop, aiUploading, cache]);
 
     const handleOpenAiUpload = (workshop) => {
         setAiWorkshop(workshop);
@@ -215,14 +205,6 @@ const Dashboard = () => {
             setAiUploading(false);
         }
     };
-
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center py-20">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" />
-            </div>
-        );
-    }
 
     return (
         <>
@@ -282,14 +264,19 @@ const Dashboard = () => {
 
                 {/* Error Banner */}
                 {error && (
-                    <div className="mb-4 flex items-center justify-between rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                    <div className="mb-4 flex items-center justify-between rounded-lg bg-red-50 p-3 text-sm text-red-700" role="alert">
                         <span>{error}</span>
                         <button onClick={() => setError('')} className="font-medium hover:text-red-900">✕</button>
                     </div>
                 )}
 
                 {/* Workshop Table */}
-                {workshops.length === 0 ? (
+                {loading ? <DeferredContent /> : readError ? (
+                    <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700" role="alert">
+                        <p>We couldn’t load workshops.</p>
+                        <button type="button" className="mt-2 font-semibold underline" onClick={retry}>Try again</button>
+                    </div>
+                ) : workshops.length === 0 ? (
                     <div className="rounded-2xl bg-white p-12 text-center shadow-sm">
                         <p className="text-gray-400">No workshops yet. Click "Create Workshop" to get started.</p>
                     </div>
@@ -400,18 +387,20 @@ const Dashboard = () => {
                     totalPages={totalPages}
                     totalElements={totalElements}
                     pageSize={PAGE_SIZE}
-                    onPageChange={(page) => fetchWorkshops({ page })}
+                    onPageChange={(nextPage) => {
+                        setError('');
+                        setPage(nextPage);
+                    }}
                     itemLabel="workshops"
                 />
 
                 {/* Create/Edit Modal */}
-                <WorkshopFormModal
-                    isOpen={modalOpen}
-                    onClose={() => setModalOpen(false)}
-                    onSubmit={handleSubmit}
-                    initialData={editingWorkshop}
-                    isLoading={submitting}
-                />
+                <Suspense fallback={<DeferredContent />}>
+                    {modalOpen && (
+                        <WorkshopFormModal isOpen onClose={() => setModalOpen(false)} onSubmit={handleSubmit}
+                            initialData={editingWorkshop} isLoading={submitting} />
+                    )}
+                </Suspense>
 
                 {/* Delete Confirmation */}
                 {deleteConfirm && (
@@ -491,18 +480,11 @@ const Dashboard = () => {
                                 {/* Bar chart: registered vs remaining */}
                                 <div className="mb-4">
                                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Seat Distribution</p>
-                                    <ResponsiveContainer width="100%" height={80}>
-                                        <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
-                                            <XAxis type="number" hide />
-                                            <YAxis type="category" dataKey="name" width={80} tick={{ fontSize: 11 }} />
-                                            <Tooltip formatter={(v) => [`${v} people`, '']} />
-                                            <Bar dataKey="value" radius={[0, 6, 6, 0]}>
-                                                {chartData.map((entry, i) => (
-                                                    <Cell key={i} fill={entry.fill} />
-                                                ))}
-                                            </Bar>
-                                        </BarChart>
-                                    </ResponsiveContainer>
+                                    <div className="h-20">
+                                        <Suspense fallback={<DeferredContent />}>
+                                            <SeatDistributionChart data={chartData} />
+                                        </Suspense>
+                                    </div>
                                 </div>
 
                                 <div className="flex justify-end">
@@ -591,19 +573,10 @@ const Dashboard = () => {
                 )}
             </div>
 
-            {/* Attendance Modal */}
-            {attendanceWorkshop && (
-                <AttendanceModal
-                    workshop={attendanceWorkshop}
-                    onClose={() => setAttendanceWorkshop(null)}
-                />
-            )}
-
-            {/* Create Account Modal */}
-            <CreateAccountModal
-                isOpen={createAccountOpen}
-                onClose={() => setCreateAccountOpen(false)}
-            />
+            <Suspense fallback={<DeferredContent />}>
+                {attendanceWorkshop && <AttendanceModal workshop={attendanceWorkshop} onClose={() => setAttendanceWorkshop(null)} />}
+                {createAccountOpen && <CreateAccountModal isOpen onClose={() => setCreateAccountOpen(false)} />}
+            </Suspense>
         </>
     );
 };

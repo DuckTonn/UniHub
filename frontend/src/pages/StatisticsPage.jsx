@@ -1,14 +1,13 @@
-import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useReadQuery } from '../context/readQueries';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-    PieChart, Pie, Cell, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar,
+    PieChart, Pie, Cell,
     AreaChart, Area,
 } from 'recharts';
 import adminWorkshopService from '../services/adminWorkshopService';
 
 /* ─── Helpers ───────────────────────────────────────────────── */
-const PALETTE = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899'];
 const round1 = (v) => (v != null ? Number(v).toFixed(1) : '0.0');
 const fmtMoney = (v) => !v ? '₫0' : new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(v);
 
@@ -112,21 +111,14 @@ const DonutWithLegend = ({ data, colors }) => (
 const AX = { fontSize: 11, fill: '#94a3b8', fontWeight: 500 };
 const GR = { strokeDasharray: '4 4', stroke: '#f1f5f9' };
 
+const readStatistics = () => adminWorkshopService.getGlobalStats();
+
 const StatisticsPage = () => {
     const navigate = useNavigate();
-    const [data, setData] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
-
-    useEffect(() => {
-        adminWorkshopService.getGlobalStats()
-            .then(setData)
-            .catch(e => setError(e.message || 'Failed to load statistics'))
-            .finally(() => setLoading(false));
-    }, []);
+    const { data, loading, error, retry } = useReadQuery('statistics', [], readStatistics);
 
     if (loading) return (
-        <div className="flex min-h-screen items-center justify-center bg-[#fafafa]">
+        <div className="flex min-h-screen items-center justify-center bg-[#fafafa]" role="status">
             <div className="relative">
                 <div className="h-16 w-16 animate-spin rounded-full border-[3px] border-indigo-100 border-t-indigo-600" />
                 <div className="mt-4 text-center text-sm font-bold text-gray-400 animate-pulse">Analysing...</div>
@@ -134,10 +126,20 @@ const StatisticsPage = () => {
         </div>
     );
 
+    if (error) return (
+        <div className="mx-auto max-w-3xl p-6">
+            <button type="button" onClick={() => navigate('/admin')} className="mb-4 text-indigo-700">Back to dashboard</button>
+            <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-rose-900" role="alert">
+                <p>We couldn’t load the analytics.</p>
+                <button type="button" onClick={retry} className="mt-2 font-semibold underline">Try again</button>
+            </div>
+        </div>
+    );
+
     const {
         totalRevenue, totalWorkshops, totalRegistrations,
         paymentSuccessRate, paymentFailureRate, actualParticipationRate, cancellationRate, dataAsOf,
-        topSpeakers = [], roomUtilization = [], registrationsByHour = [], workshopFillRates = [],
+        roomUtilization = [], registrationsByHour = [], workshopFillRates = [],
     } = data || {};
 
     const hourMap = {};

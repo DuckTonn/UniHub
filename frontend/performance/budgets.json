@@ -1,0 +1,6 @@
+{
+  "auth": { "jsBytes": 148480, "lcp": 2500, "cls": 0.1 },
+  "student": { "jsBytes": 153600, "lcp": 4500, "cls": 0.1 },
+  "admin": { "jsBytes": 158720, "lcp": 3500, "cls": 0.1 },
+  "analytics": { "jsBytes": 276480, "lcp": 4500, "cls": 0.1 }
+}

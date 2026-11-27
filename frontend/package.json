@@ -12,6 +12,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "test:e2e": "playwright test",
+    "test:read-cache": "node --test test/readQueries.test.mjs",
+    "test:performance": "node performance/measure.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -36,10 +38,12 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "babel-plugin-react-compiler": "^1.0.0",
+    "chrome-launcher": "1.2.2",
     "eslint": "^10.2.1",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.5.0",
+    "lighthouse": "13.6.0",
     "vite": "^8.0.10"
   }
 }
