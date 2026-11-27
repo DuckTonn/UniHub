@@ -17,6 +17,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -42,11 +44,26 @@ public class NotificationController {
             @RequestParam(defaultValue = "10") int size,
             Authentication authentication) {
 
-        if (authentication == null || !(authentication.getPrincipal() instanceof Number)) {
+        return ResponseEntity.ok(notificationService.getUserNotifications(requireUserId(authentication), page, size));
+    }
+
+    @PutMapping("/{notificationId}/read")
+    @Operation(summary = "Mark a visible notification as read")
+    @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH_SCHEME)
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "Notification marked as read"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "404", description = "Notification not found")
+    })
+    public ResponseEntity<Void> markRead(@PathVariable Long notificationId, Authentication authentication) {
+        notificationService.markRead(requireUserId(authentication), notificationId);
+        return ResponseEntity.noContent().build();
+    }
+
+    private Long requireUserId(Authentication authentication) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof Number userId)) {
             throw new UnauthorizedException("Authentication required");
         }
-
-        Long userId = ((Number) authentication.getPrincipal()).longValue();
-        return ResponseEntity.ok(notificationService.getUserNotifications(userId, page, size));
+        return userId.longValue();
     }
 }

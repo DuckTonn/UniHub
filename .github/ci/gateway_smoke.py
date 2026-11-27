@@ -137,7 +137,12 @@ def verify_outbox_registration(base, token, competing_token, workshop_id):
                          if "Phase 2 outbox smoke fixture" in item["contentHtml"]]
         if notifications:
             assert len(notifications) == 1
-            assert notifications[0]["channel"] == "IN_APP" and notifications[0]["status"] == "SUCCESS"
+            notice = notifications[0]
+            assert notice["channel"] == "IN_APP" and notice["status"] == "SUCCESS" and notice["read"] is False
+            request(base, f"/api/v1/notifications/{notice['id']}/read", 204, token=token, method="PUT")
+            body, _ = request(base, "/api/v1/notifications", 200, token=token)
+            updated = next(item for item in json.loads(body)["content"] if item["id"] == notice["id"])
+            assert updated["read"] is True, "Reading a notification must persist through the gateway"
             return
         time.sleep(3)
     raise AssertionError("No registration notification arrived from the outbox")

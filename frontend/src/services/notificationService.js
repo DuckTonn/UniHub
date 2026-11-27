@@ -10,6 +10,10 @@ const notificationService = {
         });
         return response;
     },
+
+    markRead: async (id) => {
+        await axiosClient.put(`${NOTIFICATION_API}/${id}/read`);
+    },
 };
 
 export default notificationService;
