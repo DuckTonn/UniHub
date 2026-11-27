@@ -8,9 +8,9 @@ const workshopService = {
    * Fetch paginated published workshops.
    * Returns { content, page, size, totalElements, totalPages, last }
    */
-  getAll: async (page = 0, size = DEFAULT_PAGE_SIZE) => {
+  getAll: async (page = 0, size = DEFAULT_PAGE_SIZE, filters = {}) => {
     const response = await axiosClient.get(WORKSHOP_API, {
-      params: { page, size },
+      params: { page, size, ...filters },
     });
     return response;
   },

@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useContext, useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import DOMPurify from 'dompurify';
+import { UnreadNotificationsContext } from '../context/UnreadNotificationsContext';
 import notificationService from '../services/notificationService';
 import PaginationControl from '../components/common/PaginationControl';
 import { formatDateTime } from '../utils/workshopDisplay';
 import './studentExperience.css';
 import './studentAccount.css';
+import './discovery.css';
+
+const EMPTY_PAGE = { content: [], page: 0, totalPages: 0, totalElements: 0 };
 
 const PAGE_SIZE = 10;
 const inboxMarkup = {
@@ -16,32 +20,55 @@ const inboxMarkup = {
 };
 
 export default function NotificationsPage() {
-    const [result, setResult] = useState({ content: [], page: 0, totalPages: 0, totalElements: 0 });
-    const [loading, setLoading] = useState(true);
-    const [loadError, setLoadError] = useState(null);
-    const [openId, setOpenId] = useState(null);
+    const refreshUnreadCount = useContext(UnreadNotificationsContext);
+    const location = useLocation();
+    const [params, setParams] = useSearchParams();
+    const unreadOnly = params.get('view') === 'unread';
+    const requestedPage = Number(params.get('page') || 0);
+    const page = Number.isInteger(requestedPage) && requestedPage >= 0 && requestedPage <= Math.floor(2_147_483_647 / PAGE_SIZE)
+        ? requestedPage : 0;
+    const [loadAttempt, setLoadAttempt] = useState(0);
+    const requestKey = `${location.key}:${loadAttempt}`;
+    const [loaded, setLoaded] = useState(null);
+    const loading = loaded?.key !== requestKey;
+    const result = loading ? EMPTY_PAGE : loaded;
+    const loadError = result.error;
+    const [openNotice, setOpenNotice] = useState(null);
+    const openId = openNotice?.key === location.key ? openNotice.id : null;
     const [readErrors, setReadErrors] = useState({});
     const readRequests = useRef(new Set());
-
-    const fetchPage = useCallback((page) => notificationService.getMyNotifications(page, PAGE_SIZE)
-        .then((data) => {
-            const content = data.content || [];
-            setResult({ content, page: data.page ?? page, totalPages: data.totalPages ?? 1,
-                totalElements: data.totalElements ?? content.length });
-        })
-        .catch((err) => setLoadError({ page, message: err.message || 'We couldn’t load notifications.' }))
-        .finally(() => setLoading(false)), []);
+    const closedInbox = useRef(null);
 
     useEffect(() => {
-        fetchPage(0);
-    }, [fetchPage]);
+        let active = true;
+        notificationService.getMyNotifications(page, PAGE_SIZE, unreadOnly)
+            .then((data) => {
+                if (!active) return;
+                const content = data.content || [];
+                const totalPages = data.totalPages ?? 1;
+                if (unreadOnly && page > 0 && page >= totalPages) {
+                    const next = new URLSearchParams({ view: 'unread' });
+                    if (totalPages > 1) next.set('page', totalPages - 1);
+                    setParams(next, { replace: true });
+                    return;
+                }
+                setLoaded({ content, page: data.page ?? page, totalPages,
+                    totalElements: data.totalElements ?? content.length, key: requestKey });
+            })
+            .catch((err) => {
+                if (active) setLoaded({ ...EMPTY_PAGE, key: requestKey, error: err.message || 'We couldn’t load notifications.' });
+            });
 
-    const changePage = (page) => {
-        setOpenId(null);
-        setLoadError(null);
-        setLoading(true);
-        fetchPage(page);
+        return () => { active = false; };
+    }, [page, unreadOnly, requestKey, setParams]);
+
+    const changePage = (nextPage) => {
+        setParams(unreadOnly
+            ? { view: 'unread', ...(nextPage > 0 ? { page: nextPage } : {}) }
+            : nextPage > 0 ? { page: nextPage } : {});
     };
+
+    const reload = () => setLoadAttempt((attempt) => attempt + 1);
 
     const markRead = async (item) => {
         if (item.read === true || readRequests.current.has(item.id)) return;
@@ -49,10 +76,12 @@ export default function NotificationsPage() {
         readRequests.current.add(item.id);
         try {
             await notificationService.markRead(item.id);
-            setResult((previous) => ({
+            setLoaded((previous) => previous?.key === requestKey ? {
                 ...previous,
                 content: previous.content.map((entry) => entry.id === item.id ? { ...entry, read: true } : entry),
-            }));
+            } : previous);
+            refreshUnreadCount?.();
+            if (unreadOnly && closedInbox.current === location.key) reload();
         } catch {
             setReadErrors((errors) => ({ ...errors, [item.id]: true }));
         } finally {
@@ -61,6 +90,7 @@ export default function NotificationsPage() {
     };
 
     const unread = result.content.filter((item) => item.read !== true).length;
+    const visibleNotifications = unreadOnly ? result.content.filter((item) => !item.read || item.id === openId) : result.content;
 
     return (
         <div className="student-experience" aria-label="Notifications">
@@ -79,17 +109,23 @@ export default function NotificationsPage() {
                         <p className="inbox-count" aria-live="polite">{unread} unread on this page</p>
                     )}
                 </div>
+                <div className="inbox-filters" aria-label="Filter notifications" role="group">
+                    <button type="button" className="student-button" aria-pressed={!unreadOnly}
+                        onClick={() => { if (unreadOnly) setParams({}); }}>All notifications</button>
+                    <button type="button" className="student-button" aria-pressed={unreadOnly}
+                        onClick={() => { if (!unreadOnly) setParams({ view: 'unread' }); }}>Unread only</button>
+                </div>
                 {loadError && (
                     <div className="student-notice student-notice--error" role="alert">
-                        <p>{loadError.message}</p>
-                        <button type="button" className="student-text-link" onClick={() => changePage(loadError.page)}>Try again</button>
+                        <p>{loadError}</p>
+                        <button type="button" className="student-text-link" onClick={reload}>Try again</button>
                     </div>
                 )}
                 {loading ? (
                     <p className="student-notice" role="status">Loading notifications…</p>
-                ) : result.content.length ? (
+                ) : visibleNotifications.length ? (
                     <ul className="inbox-list">
-                        {result.content.map((item) => {
+                        {visibleNotifications.map((item) => {
                             const expanded = item.id === openId;
                             const unreadItem = item.read !== true;
                             return (
@@ -98,8 +134,15 @@ export default function NotificationsPage() {
                                         <button type="button" className="inbox-trigger" id={`notice-button-${item.id}`}
                                             aria-expanded={expanded} aria-controls={`notice-content-${item.id}`}
                                             onClick={() => {
-                                                setOpenId(expanded ? null : item.id);
-                                                if (!expanded) markRead(item);
+                                                if (expanded) {
+                                                    closedInbox.current = location.key;
+                                                    setOpenNotice(null);
+                                                    if (unreadOnly && result.content.some((entry) => entry.read)) reload();
+                                                } else {
+                                                    closedInbox.current = null;
+                                                    setOpenNotice({ id: item.id, key: location.key });
+                                                    markRead(item);
+                                                }
                                             }}>
                                             <span className="inbox-dot" aria-hidden="true" />
                                             <span className="inbox-heading">
@@ -130,7 +173,7 @@ export default function NotificationsPage() {
                             );
                         })}
                     </ul>
-                ) : !loadError && <p className="student-notice">No notifications yet.</p>}
+                ) : !loadError && <p className="student-notice">{unreadOnly ? 'No unread notifications.' : 'No notifications yet.'}</p>}
                 {!loading && (
                     <div className="workshop-pagination">
                         <PaginationControl currentPage={result.page} totalPages={result.totalPages}

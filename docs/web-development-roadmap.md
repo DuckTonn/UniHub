@@ -29,6 +29,11 @@ Màu, khoảng cách và viền focus dùng chung đặt trong `frontend/src/ind
 - Thêm tổng số chưa đọc trên thanh điều hướng và bộ lọc chưa đọc trên máy chủ. Dùng dữ liệu biên nhận theo tài khoản và giữ API phân trang tương thích với Android.
 - Điều kiện nghiệm thu là bộ lọc vẫn đúng sau khi tải lại hoặc chia sẻ URL. Mở thông báo trên một thiết bị cập nhật dữ liệu khi thiết bị kia tải lại.
 
+### Hợp đồng bộ lọc mốc 2
+
+- `GET /api/v1/workshops` nhận thêm `q` (tên hoặc diễn giả), `from` và `to` (ngày bắt đầu, tính cả hai đầu), `fee=FREE|PAID` và `seatsAvailable=true`. Bộ lọc áp dụng trước phân trang. Trang web giữ các tham số này và `page` trong URL.
+- `GET /api/v1/notifications?unreadOnly=true` phân trang các thông báo chưa đọc. `GET /api/v1/notifications/unread-count` trả tổng `unreadCount` cho tài khoản hiện tại. Thanh điều hướng cập nhật tổng sau khi đã đánh dấu thành công hoặc khi cửa sổ nhận lại focus.
+
 ## 3. Đo hiệu năng và tăng độ tin cậy
 
 - Đo các trang quan trọng bằng Lighthouse trên cấu hình mobile cố định. Tách bundle của trang quản trị, biểu đồ và các hộp thoại chỉ được dùng theo nhu cầu. Đặt ngân sách dung lượng cho từng nhóm route từ kết quả đo ban đầu.

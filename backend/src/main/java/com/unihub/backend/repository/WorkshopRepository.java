@@ -91,6 +91,23 @@ public interface WorkshopRepository extends JpaRepository<Workshop, Long> {
     )
     Page<Workshop> findAllPublishedWithRoom(Pageable pageable);
 
+    String PUBLISHED_FILTERS = """
+            WHERE w.status = 'PUBLISHED'
+              AND (:keyword = '' OR locate(lower(:keyword), lower(w.title)) > 0
+                   OR locate(lower(:keyword), lower(w.speaker)) > 0)
+              AND (:ignoreFrom = true OR w.startTime >= :from)
+              AND (:ignoreTo = true OR w.startTime < :until)
+              AND (:fee = '' OR (:fee = 'FREE' AND w.price = 0) OR (:fee = 'PAID' AND w.price > 0))
+              AND (:seatsAvailable = false OR w.remainingSlots > 0)
+            """;
+
+    @Query(value = "SELECT w FROM Workshop w JOIN FETCH w.room " + PUBLISHED_FILTERS + " ORDER BY w.id ASC",
+            countQuery = "SELECT COUNT(w) FROM Workshop w " + PUBLISHED_FILTERS)
+    Page<Workshop> searchPublishedWithRoom(@Param("keyword") String keyword,
+            @Param("ignoreFrom") boolean ignoreFrom, @Param("from") LocalDateTime from,
+            @Param("ignoreTo") boolean ignoreTo, @Param("until") LocalDateTime until,
+            @Param("fee") String fee, @Param("seatsAvailable") boolean seatsAvailable, Pageable pageable);
+
     /**
      * Fetch a single workshop with its Room eagerly loaded.
      * Prevents an extra query when accessing room fields in toResponse().

@@ -49,7 +49,13 @@ public class NotificationService {
 
     @Transactional(readOnly = true)
     public PageResponse<NotificationResponse> getUserNotifications(Long userId, int page, int size) {
-        Page<Notification> result = notificationRepository.findInAppNotificationsForUser(
+        return getUserNotifications(userId, page, size, false);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<NotificationResponse> getUserNotifications(Long userId, int page, int size, boolean unreadOnly) {
+        Page<Notification> result = unreadOnly ? notificationRepository.findUnread(userId, PageRequest.of(page, size))
+                : notificationRepository.findInAppNotificationsForUser(
                 userId,
                 "IN_APP",
                 PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt", "id"))
@@ -70,6 +76,11 @@ public class NotificationService {
                 .totalPages(result.getTotalPages())
                 .last(result.isLast())
                 .build();
+    }
+
+    @Transactional(readOnly = true)
+    public long countUnread(Long userId) {
+        return notificationRepository.countUnread(userId);
     }
 
     @Transactional

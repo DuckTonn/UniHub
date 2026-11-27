@@ -129,3 +129,50 @@ test('keeps student screens within the viewport with keyboard focus and reduced 
     await expect(inboxDetail.getByText('Innovation Lab', { exact: true })).toBeVisible();
     await expect(inboxDetail).toHaveCSS('animation-name', 'none');
 });
+
+test('applies catalog filters through the URL and resets pagination', async ({ page, studentApi }) => {
+    await signInTo(page, '/workshops');
+    expect(studentApi.logins).toEqual([student.email]);
+    await page.getByTitle('Next page').click();
+    await expect(page).toHaveURL(/page=1$/);
+    await expect(page.getByRole('heading', { name: 'Campus workshop 13' })).toBeVisible();
+
+    await page.getByRole('searchbox', { name: 'Search by name or speaker' }).fill('Casey Nguyen');
+    await page.getByLabel('From date').fill('2026-06-16');
+    await page.getByLabel('To date').fill('2026-06-16');
+    await page.getByRole('combobox', { name: 'Fee', exact: true }).selectOption('PAID');
+    await page.getByRole('checkbox', { name: 'Only with seats available' }).check();
+    await page.getByRole('button', { name: 'Apply filters' }).click();
+    await expect(page.getByRole('heading', { name: 'Mobile App Prototyping' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Design Thinking Studio' })).toHaveCount(0);
+    const params = new URL(page.url()).searchParams;
+    expect(Object.fromEntries(params)).toEqual({
+        q: 'Casey Nguyen', from: '2026-06-16', to: '2026-06-16', fee: 'PAID', seatsAvailable: 'true',
+    });
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'Mobile App Prototyping' })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Fee', exact: true })).toHaveValue('PAID');
+    await page.goBack();
+    await expect(page).toHaveURL(/page=1$/);
+    await expect(page.getByRole('heading', { name: 'Campus workshop 13' })).toBeVisible();
+    await page.getByRole('button', { name: 'Clear filters' }).click();
+    await expect(page).toHaveURL(/\/workshops$/);
+});
+
+test('filters unread notices on the server and refreshes the navigation badge', async ({ page, studentApi }) => {
+    await signInTo(page, '/notifications');
+    await expect(page.getByRole('link', { name: 'Notifications, 1 unread' })).toBeVisible();
+    await page.getByRole('button', { name: 'Unread only' }).click();
+    await expect(page).toHaveURL(/\?view=unread$/);
+    const notice = page.getByRole('button', { name: /Workshop room updated/ });
+    await notice.click();
+    await expect(page.getByRole('button', { name: /Welcome to UniHub/ })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Try again', exact: true }).click();
+    await expect(page.getByRole('link', { name: 'Notifications, 0 unread' })).toBeVisible();
+    await expect(page.getByText('Innovation Lab', { exact: true })).toBeVisible();
+    await notice.click();
+    await expect(page.getByText('No unread notifications.', { exact: true })).toBeVisible();
+    expect(studentApi.read).toEqual([7, 7]);
+    await page.getByRole('button', { name: 'All notifications' }).click();
+    await expect(notice.getByText('Read', { exact: true })).toBeVisible();
+});

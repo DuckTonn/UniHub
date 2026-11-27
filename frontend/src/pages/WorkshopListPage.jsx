@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import workshopService from '../services/workshopService';
 import workshopRegistrationService from '../services/workshopRegistrationService';
 import PaymentModal from '../components/workshops/PaymentModal';
@@ -7,10 +7,12 @@ import WorkshopTicketDialog from '../components/workshops/WorkshopTicketDialog';
 import WorkshopDetailsDialog from '../components/workshops/WorkshopDetailsDialog';
 import PaginationControl from '../components/common/PaginationControl';
 
+import WorkshopFilters from '../components/workshops/WorkshopFilters';
 import WorkshopCard from '../components/workshops/WorkshopCard';
 import { isRegistrationClosed } from '../utils/workshopDisplay';
 import './studentExperience.css';
 import './workshopTickets.css';
+import './discovery.css';
 
 const isRegistrationOpen = (w) => {
     try {
@@ -35,13 +37,23 @@ const getRegisterButtonLabel = (workshop, isRegistering) => {
 };
 
 const PAGE_SIZE = 12;
+const FILTER_NAMES = ['q', 'from', 'to', 'fee', 'seatsAvailable'];
+const EMPTY_PAGE = { content: [], totalPages: 0, totalElements: 0 };
 
 const WorkshopListPage = () => {
-    const requestedWorkshopId = useLocation().state?.workshopId;
-    const [workshops, setWorkshops] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const location = useLocation();
+    const requestedWorkshopId = location.state?.workshopId;
+    const openedLocation = useRef(null);
+    const [searchParams, setSearchParams] = useSearchParams();
+    const filters = useMemo(() => Object.fromEntries(FILTER_NAMES.map((name) => [name, searchParams.get(name) || ''])), [searchParams]);
+    const requestedPage = Number(searchParams.get('page') || 0);
+    const page = Number.isInteger(requestedPage) && requestedPage >= 0 && requestedPage <= Math.floor(2_147_483_647 / PAGE_SIZE)
+        ? requestedPage : 0;
     const [loadAttempt, setLoadAttempt] = useState(0);
-    const [error, setError] = useState('');
+    const requestKey = `${location.key}:${loadAttempt}`;
+    const [result, setResult] = useState(null);
+    const loading = result?.key !== requestKey;
+    const { content: workshops, totalPages, totalElements, error } = loading ? EMPTY_PAGE : result;
     const [selectedWorkshop, setSelectedWorkshop] = useState(null);
     const handleSelectWorkshop = (workshop) => {
         setRegistrationError('');
@@ -55,21 +67,7 @@ const WorkshopListPage = () => {
     const [registrationData, setRegistrationData] = useState(null);
     const [registrationError, setRegistrationError] = useState('');
 
-    // Pagination state
-    const [currentPage, setCurrentPage] = useState(0);
-    const [totalPages, setTotalPages] = useState(0);
-    const [totalElements, setTotalElements] = useState(0);
-
-    const receivePage = useCallback((data) => {
-        setWorkshops(data.content || []);
-        setCurrentPage(data.page);
-        setTotalPages(data.totalPages);
-        setTotalElements(data.totalElements);
-    }, []);
-
-    const fetchWorkshops = async (page) => {
-        receivePage(await workshopService.getAll(page, PAGE_SIZE));
-    };
+    const reload = () => setLoadAttempt((attempt) => attempt + 1);
 
     const handleRegister = async () => {
         if (!selectedWorkshop) return;
@@ -84,7 +82,7 @@ const WorkshopListPage = () => {
                 workshopId: selectedWorkshop.id,
             };
             setRegistrationData(dataWithTitle);
-            await fetchWorkshops(currentPage);
+            reload();
 
             if (response.paidFlow) {
                 // Show payment modal for paid workshops
@@ -130,12 +128,12 @@ const WorkshopListPage = () => {
                         qrCode: paymentResponse.qrCode,
                     }));
                 }
-                await fetchWorkshops(currentPage);
+                reload();
                 setShowPaymentModal(false);
                 setShowSuccessModal(true);
             } else {
                 setRegistrationError(`Payment failed: ${paymentResponse.message}`);
-                await fetchWorkshops(currentPage);
+                reload();
             }
         } catch (error) {
             const status = error.response?.status;
@@ -146,7 +144,7 @@ const WorkshopListPage = () => {
             } else {
                 setRegistrationError(error.response?.data?.message || error.message || 'Payment failed');
             }
-            await fetchWorkshops(currentPage);
+            reload();
         } finally {
             setIsRegistering(false);
         }
@@ -154,39 +152,36 @@ const WorkshopListPage = () => {
 
     useEffect(() => {
         let active = true;
-        workshopService.getAll(0, PAGE_SIZE)
+        const query = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== ''));
+        workshopService.getAll(page, PAGE_SIZE, query)
             .then((data) => {
                 if (!active) return;
-                receivePage(data);
-                if (requestedWorkshopId != null) {
+                setResult({ ...EMPTY_PAGE, ...data, key: requestKey });
+                if (requestedWorkshopId != null && openedLocation.current !== location.key) {
+                    openedLocation.current = location.key;
                     setSelectedWorkshop(data.content?.find((item) => item.id === requestedWorkshopId) || null);
                 }
             })
             .catch((err) => {
-                if (active) setError(err.message || 'We couldn’t load workshops. Please try again.');
-            })
-            .finally(() => {
-                if (active) setLoading(false);
+                if (active) setResult({ ...EMPTY_PAGE, key: requestKey, error: err.message || 'We couldn’t load workshops.' });
             });
 
         return () => { active = false; };
-    }, [loadAttempt, receivePage, requestedWorkshopId]);
+    }, [filters, page, requestKey, requestedWorkshopId, location.key]);
 
-    const retry = () => {
-        setLoading(true);
-        setError('');
-        setLoadAttempt((attempt) => attempt + 1);
+    const applyFilters = (values) => {
+        setSearchParams(Object.fromEntries(Object.entries(values).filter(([, value]) => value !== '')));
     };
 
-    const handlePageChange = async (page) => {
-        setError('');
-        try {
-            await fetchWorkshops(page);
-            const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-            window.scrollTo({ top: 0, behavior: reducedMotion ? 'instant' : 'smooth' });
-        } catch (err) {
-            setError(err.message || 'We couldn’t load that page. Please try again.');
-        }
+    const handlePageChange = (nextPage) => {
+        setSearchParams((previous) => {
+            const next = new URLSearchParams(previous);
+            if (nextPage === 0) next.delete('page');
+            else next.set('page', nextPage);
+            return next;
+        });
+        const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        window.scrollTo({ top: 0, behavior: reducedMotion ? 'instant' : 'smooth' });
     };
 
     return (
@@ -208,10 +203,11 @@ const WorkshopListPage = () => {
                         <p>{totalElements} {totalElements === 1 ? 'workshop' : 'workshops'}</p>
                     )}
                 </div>
+                <WorkshopFilters key={JSON.stringify(filters)} filters={filters} onApply={applyFilters} onReset={() => setSearchParams({})} />
                 {error && (
                     <div className="student-notice student-notice--error" role="alert">
                         <p>{error}</p>
-                        {!workshops.length && <button className="student-text-link" type="button" onClick={retry}>Try again</button>}
+                        {!workshops.length && <button className="student-text-link" type="button" onClick={reload}>Try again</button>}
                     </div>
                 )}
                 {loading ? (
@@ -228,12 +224,12 @@ const WorkshopListPage = () => {
                         ))}
                     </div>
                 ) : !error && (
-                    <p className="student-notice">No workshops are available yet.</p>
+                    <p className="student-notice">No workshops match these filters.</p>
                 )}
 
                 <div className="workshop-pagination">
                     <PaginationControl
-                        currentPage={currentPage}
+                        currentPage={page}
                         totalPages={totalPages}
                         totalElements={totalElements}
                         pageSize={PAGE_SIZE}
@@ -269,7 +265,7 @@ const WorkshopListPage = () => {
                         if (registrationData?.workshopId) {
                             try {
                                 await workshopRegistrationService.cancelRegistration(registrationData.workshopId);
-                                await fetchWorkshops(currentPage);
+                                reload();
                             } catch (e) {
                                 console.error('Failed to cancel registration:', e);
                             }
