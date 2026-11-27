@@ -101,12 +101,16 @@ test('keeps student screens within the viewport with keyboard focus and reduced 
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Welcome, Alex' })).toBeVisible();
     expect(studentApi.logins).toEqual([student.email]);
-    for (const [path, heading] of [
-        ['/', 'Welcome, Alex'], ['/workshops', 'Explore workshops'], ['/registration-history', 'My registrations'],
-        ['/profile', 'My profile'], ['/notifications', 'Notifications'],
+    for (const [path, heading, readyText] of [
+        ['/', 'Welcome, Alex', 'Design Thinking Studio'],
+        ['/workshops', 'Explore workshops', 'Design Thinking Studio'],
+        ['/registration-history', 'My registrations', 'Payment pending'],
+        ['/profile', 'My profile', student.email],
+        ['/notifications', 'Notifications', 'Workshop room updated'],
     ]) {
         await page.goto(path);
         await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible();
+        await expect(page.getByRole('main').getByText(readyText, { exact: true })).toBeVisible();
         await expect.poll(() => page.evaluate(() =>
             document.documentElement.scrollWidth <= document.documentElement.clientWidth
         ), { message: `${path} must not overflow horizontally` }).toBe(true);
