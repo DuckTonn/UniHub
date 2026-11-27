@@ -1,16 +1,20 @@
-import React from 'react';
+import { Link } from 'react-router-dom';
 
-const HomeStudentHeader = ({ userName, onViewRegistrations }) => {
+export default function HomeStudentHeader({ userName }) {
     return (
-        <div className="mb-8 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-                <h1 className="text-3xl font-bold text-gray-900">Student Dashboard</h1>
-                <p className="mt-1 text-sm text-gray-500">
-                    Welcome back, {userName || 'Student'}
-                </p>
+        <header className="student-hero">
+            <div className="student-hero-copy">
+                <h1>{userName ? `Welcome, ${userName.split(' ')[0]}` : 'Welcome to UniHub'}</h1>
+                <p>Find your next campus workshop and keep track of the sessions you’ve booked.</p>
+                <div className="student-actions">
+                    <Link className="student-button student-button--primary" to="/workshops">
+                        Explore workshops <span aria-hidden="true">→</span>
+                    </Link>
+                    <Link className="student-button student-button--on-cover" to="/registration-history">
+                        My registrations
+                    </Link>
+                </div>
             </div>
-        </div>
+        </header>
     );
-};
-
-export default HomeStudentHeader;
+}

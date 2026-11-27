@@ -1,0 +1,518 @@
+.student-experience {
+    --student-ink: #211934;
+    --student-muted: #625b72;
+    --student-accent: #5635ce;
+    --student-line: #e8e1f2;
+    width: min(100%, 80rem);
+    margin-inline: auto;
+    padding: clamp(1rem, 3vw, 2.75rem);
+    padding-bottom: 4rem;
+    color: var(--student-ink);
+}
+
+.student-hero,
+.workshop-catalog-header {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    border-radius: clamp(1.25rem, 3vw, 2rem);
+}
+
+.student-hero {
+    display: flex;
+    align-items: end;
+    min-height: 23rem;
+    padding: clamp(1.5rem, 4vw, 3.5rem);
+    background: #261647;
+    color: #fff;
+}
+
+.student-hero::before {
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    background:
+        linear-gradient(90deg, #22143f 6%, rgb(40 24 72 / 92%) 37%, rgb(35 24 65 / 13%) 78%),
+        url('../assets/workshop-sign-in.webp') right 33% / 64% auto no-repeat;
+    content: '';
+}
+
+.student-hero-copy {
+    max-width: 35rem;
+}
+
+.student-hero h1,
+.workshop-catalog-header h1 {
+    margin: 0;
+    font-size: clamp(2.25rem, 5.5vw, 4.5rem);
+    font-weight: 760;
+    letter-spacing: -0.065em;
+    line-height: 1.02;
+    overflow-wrap: anywhere;
+}
+
+.student-hero-copy > p,
+.workshop-catalog-header p {
+    max-width: 39ch;
+    margin-top: 0.9rem;
+    line-height: 1.6;
+}
+
+.student-hero-copy > p {
+    color: #eee7fa;
+}
+
+.student-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    margin-top: 1.5rem;
+}
+
+.student-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.55rem;
+    min-height: 44px;
+    padding: 0.65rem 0.95rem;
+    border: 1px solid var(--student-line);
+    border-radius: 0.75rem;
+    background: #fff;
+    color: var(--student-accent);
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.student-button:hover:not(:disabled) {
+    border-color: #bfb0ed;
+    background: #f6f1ff;
+}
+
+.student-button--primary {
+    border-color: transparent;
+    background: linear-gradient(115deg, #6948e0, #4a28ba);
+    color: #fff;
+    box-shadow: 0 5px 14px rgb(76 42 190 / 24%);
+}
+
+.student-button--primary:hover:not(:disabled) {
+    border-color: transparent;
+    background: linear-gradient(115deg, #5738ca, #3c209f);
+}
+
+.student-button--on-cover {
+    border-color: rgb(255 255 255 / 50%);
+    background: rgb(31 16 58 / 45%);
+    color: #fff;
+}
+
+.student-button--on-cover:hover {
+    border-color: #fff;
+    background: #402867;
+}
+
+.student-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.student-experience :is(a, button):focus-visible {
+    outline: 2px solid var(--student-accent);
+    outline-offset: 3px;
+}
+
+.student-hero :is(a, button):focus-visible {
+    outline-color: #e2d6ff;
+}
+
+.student-section {
+    margin-top: clamp(1.75rem, 4vw, 3rem);
+}
+
+.student-section-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    margin-bottom: 0.9rem;
+}
+
+.student-section-heading h2 {
+    font-size: clamp(1.3rem, 3vw, 2rem);
+    font-weight: 750;
+    letter-spacing: -0.045em;
+}
+
+.student-section-heading p {
+    color: var(--student-muted);
+    font-size: 0.9rem;
+}
+
+.student-text-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 44px;
+    color: var(--student-accent);
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.student-text-link:hover {
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+}
+
+.workshop-catalog-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: clamp(1.5rem, 4vw, 3.5rem);
+    border: 1px solid #e9e0fa;
+    background: radial-gradient(ellipse at 100% 0, #e2d3ff, transparent 65%), #f5efff;
+}
+
+.workshop-catalog-header::after {
+    position: absolute;
+    z-index: -1;
+    top: -12rem;
+    right: -7rem;
+    width: 28rem;
+    aspect-ratio: 1;
+    border: 1px solid rgb(86 53 206 / 13%);
+    border-radius: 50%;
+    box-shadow: 0 0 0 26px rgb(86 53 206 / 5%), 0 0 0 58px rgb(86 53 206 / 4%);
+    content: '';
+}
+
+.workshop-catalog-header h1 {
+    font-size: clamp(2.15rem, 5vw, 3.75rem);
+}
+
+.workshop-catalog-header p {
+    color: var(--student-muted);
+}
+
+.workshop-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+}
+
+.workshop-card {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--student-line);
+    border-radius: 1.25rem;
+    background: #fff;
+    box-shadow: 0 3px 10px rgb(38 22 71 / 4%);
+}
+
+.workshop-card:focus-within {
+    border-color: #bfb0ed;
+    box-shadow: 0 5px 18px rgb(62 35 123 / 10%);
+}
+
+.workshop-card-art {
+    --art-light: #ac83f7;
+    --art-dark: #47238a;
+    position: relative;
+    isolation: isolate;
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    min-height: clamp(7.25rem, 13vw, 9rem);
+    padding: 0.85rem;
+    overflow: hidden;
+    background: radial-gradient(ellipse at 74% -20%, var(--art-light), transparent 68%), var(--art-dark);
+}
+
+.workshop-card-art--rose {
+    --art-light: #ef9eaa;
+    --art-dark: #78335c;
+}
+
+.workshop-card-art--blue {
+    --art-light: #79addb;
+    --art-dark: #263b76;
+}
+
+.workshop-card-art::after {
+    position: absolute;
+    z-index: -1;
+    top: -5.5rem;
+    right: 4rem;
+    width: 12rem;
+    aspect-ratio: 1;
+    border: 1px solid rgb(255 255 255 / 34%);
+    border-radius: 46% 54% 61% 39%;
+    background: linear-gradient(150deg, rgb(255 255 255 / 26%), transparent 80%);
+    box-shadow: 0 0 0 14px rgb(255 255 255 / 10%), 0 0 0 32px rgb(255 255 255 / 8%);
+    transform: rotate(-20deg);
+    content: '';
+}
+
+.workshop-date-stamp {
+    display: grid;
+    min-width: 3.35rem;
+    place-items: center;
+    padding: 0.4rem 0.6rem;
+    border-radius: 0.75rem;
+    background: #fff;
+    color: #312044;
+    font-size: 0.73rem;
+    font-weight: 750;
+    line-height: 1.2;
+    text-transform: uppercase;
+}
+
+.workshop-date-stamp strong {
+    font-size: 1.5rem;
+    letter-spacing: -0.05em;
+}
+
+.workshop-price {
+    margin-left: auto;
+    padding: 0.35rem 0.65rem;
+    border-radius: 100px;
+    background: #fff;
+    color: #312044;
+    font-size: 0.8rem;
+    font-weight: 750;
+}
+
+.workshop-card-body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding: clamp(0.95rem, 2vw, 1.25rem);
+    overflow-wrap: anywhere;
+}
+
+.workshop-card-body h3 {
+    font-size: 1.18rem;
+    font-weight: 750;
+    letter-spacing: -0.025em;
+    line-height: 1.2;
+}
+
+.workshop-meta,
+.workshop-card-description {
+    color: var(--student-muted);
+    font-size: 0.875rem;
+}
+
+.workshop-card-time {
+    color: #4d31ae;
+    font-weight: 700;
+}
+
+.workshop-card-description {
+    display: -webkit-box;
+    margin: 0.2rem 0 0.65rem;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.workshop-card-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.3rem 0.6rem;
+    margin-top: auto;
+    padding-top: 0.25rem;
+    border-top: 1px solid var(--student-line);
+}
+
+.workshop-status {
+    padding: 0.25rem 0.55rem;
+    border-radius: 100px;
+    background: #f0eafa;
+    color: #4d3280;
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+
+.workshop-status--registered {
+    background: #e1f5ea;
+    color: #1b6142;
+}
+
+.workshop-status--pending {
+    background: #fff0d4;
+    color: #744508;
+}
+
+.workshop-card-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-height: 44px;
+    margin-left: auto;
+    border-radius: 0.3rem;
+    color: var(--student-accent);
+    font-size: 0.875rem;
+    font-weight: 750;
+}
+
+.workshop-card-action:hover {
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+}
+
+.student-notice,
+.student-account {
+    padding: 1.2rem;
+    border: 1px solid var(--student-line);
+    border-radius: 1.15rem;
+    background: #fff;
+    color: var(--student-muted);
+}
+
+.student-notice--error {
+    margin-bottom: 0.75rem;
+    border-color: #f0c1cc;
+    background: #fff2f4;
+    color: #88243c;
+}
+
+.student-account {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.85rem;
+    margin-top: 1.75rem;
+    overflow-wrap: anywhere;
+}
+
+.student-account h2 {
+    color: var(--student-ink);
+    font-weight: 750;
+}
+
+.student-account p {
+    font-size: 0.875rem;
+}
+
+.student-account-avatar {
+    display: grid;
+    width: 2.8rem;
+    aspect-ratio: 1;
+    place-items: center;
+    border-radius: 0.85rem;
+    background: #eee7ff;
+    color: #4d2fb1;
+    font-weight: 750;
+}
+
+.student-account > div {
+    min-width: 0;
+    flex: 1;
+}
+
+.workshop-dialog {
+    width: min(33rem, calc(100% - 1.5rem));
+    max-height: calc(100dvh - 2rem);
+    margin: auto;
+    overflow: auto;
+    border: 1px solid var(--student-line);
+    border-radius: 1.25rem;
+    background: #fff;
+    color: var(--student-ink);
+    box-shadow: 0 24px 64px rgb(33 25 52 / 27%);
+}
+
+.workshop-dialog::backdrop {
+    background: rgb(33 25 52 / 62%);
+}
+
+.workshop-dialog-content {
+    padding: clamp(1rem, 4vw, 1.75rem);
+    overflow-wrap: anywhere;
+}
+
+.workshop-dialog-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: end;
+    gap: 0.6rem;
+    margin-top: 1.5rem;
+}
+
+.workshop-pagination > div,
+.workshop-pagination > div > div {
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.workshop-pagination button {
+    min-width: 40px;
+    min-height: 40px;
+}
+
+@media (min-width: 42rem) {
+    .workshop-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 64rem) {
+    .workshop-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 42rem) {
+    .student-hero {
+        min-height: 22rem;
+        padding-top: 9rem;
+    }
+
+    .student-hero::before {
+        background:
+            linear-gradient(180deg, rgb(34 20 63 / 4%), #22143f 67%),
+            url('../assets/workshop-sign-in.webp') center 32% / cover no-repeat;
+    }
+}
+
+@media (max-width: 29rem) {
+    .student-actions {
+        display: grid;
+    }
+
+    .student-account .student-button {
+        width: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .workshop-card,
+    .workshop-card-art::after {
+        transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+    }
+
+    .workshop-card:focus-within .workshop-card-art::after {
+        transform: rotate(-15deg) scale(1.08);
+    }
+
+    @media (hover: hover) {
+        .workshop-card:hover {
+            transform: translateY(-3px);
+            border-color: #cdbfee;
+            box-shadow: 0 10px 24px rgb(62 35 123 / 11%);
+        }
+
+        .workshop-card:hover .workshop-card-art::after {
+            transform: rotate(-15deg) scale(1.08);
+        }
+    }
+}

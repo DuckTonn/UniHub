@@ -1,46 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import workshopService from '../services/workshopService';
 import workshopRegistrationService from '../services/workshopRegistrationService';
 import PaymentModal from '../components/workshops/PaymentModal';
-import RegistrationSuccessModal from '../components/workshops/RegistrationSuccessModal';
+import WorkshopTicketDialog from '../components/workshops/WorkshopTicketDialog';
+import WorkshopDetailsDialog from '../components/workshops/WorkshopDetailsDialog';
 import PaginationControl from '../components/common/PaginationControl';
 
-const formatDateTime = (dt) => {
-    if (!dt) return '—';
-    const d = new Date(dt);
-    return d.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })
-        + ' • ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-};
-
-const formatPrice = (price) => {
-    if (!price || Number(price) === 0) return 'Free';
-    return Number(price).toLocaleString('vi-VN') + 'đ';
-};
-
-const formatDescription = (description) => {
-    const text = typeof description === 'string' ? description.trim() : '';
-    return text || 'This workshop does not have a description yet.';
-};
-
-const getSeatMapAlt = (workshop) => {
-    const roomName = workshop?.roomName ? ` for ${workshop.roomName}` : '';
-    return `Seat map${roomName}`;
-};
-
-const getRegistrationState = (workshop) => {
-    if (!workshop?.userRegistrationStatus) return null;
-
-    if (workshop.userRegistrationStatus === 'SUCCESS') {
-        return { label: 'Registered', tone: 'success' };
-    }
-
-    if (workshop.userRegistrationStatus === 'PENDING') {
-        return { label: 'Payment pending', tone: 'pending' };
-    }
-
-    return { label: 'Registered', tone: 'info' };
-};
+import WorkshopCard from '../components/workshops/WorkshopCard';
+import { isRegistrationClosed } from '../utils/workshopDisplay';
+import './studentExperience.css';
+import './workshopTickets.css';
 
 const isRegistrationOpen = (w) => {
     try {
@@ -54,32 +24,12 @@ const isRegistrationOpen = (w) => {
     }
 };
 
-const isRegistrationClosed = (w) => {
-    try {        
-        const now = new Date();
-        const end = w.registrationEndTime ? new Date(w.registrationEndTime) : new Date(w.endTime);
-        return now > end;
-    } catch {
-        return false; // if parsing fails, default to not closed and let backend enforce
-    }
-};
-
-const isRegistrationStarted = (w) => {
-    try {
-        const now = new Date();
-        const start = w.registrationStartTime ? new Date(w.registrationStartTime) : null;
-        return start && now >= start;
-    } catch {
-        return false; // if parsing fails, default to not started and let backend enforce
-    }
-};
-
 const getRegisterButtonLabel = (workshop, isRegistering) => {
     if (isRegistering) return 'Processing...';
     if (workshop?.userRegistrationStatus === 'SUCCESS') return 'Registered';
     if (workshop?.userRegistrationStatus === 'PENDING') return 'Payment pending';
-    if (!isRegistrationStarted(workshop)) return 'Registration Not Started';
     if (isRegistrationClosed(workshop)) return 'Registration closed';
+    if (!isRegistrationOpen(workshop)) return 'Registration not open';
     if (workshop?.remainingSlots === 0) return 'Full';
     return 'Register';
 };
@@ -87,30 +37,18 @@ const getRegisterButtonLabel = (workshop, isRegistering) => {
 const PAGE_SIZE = 12;
 
 const WorkshopListPage = () => {
-    const navigate = useNavigate();
+    const requestedWorkshopId = useLocation().state?.workshopId;
     const [workshops, setWorkshops] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [loadAttempt, setLoadAttempt] = useState(0);
     const [error, setError] = useState('');
     const [selectedWorkshop, setSelectedWorkshop] = useState(null);
-    const [showSeatMap, setShowSeatMap] = useState(false);
-    const [seatMapLoading, setSeatMapLoading] = useState(false);
-    const [seatMapError, setSeatMapError] = useState('');
-
-    const resetSeatMapState = () => {
-        setShowSeatMap(false);
-        setSeatMapLoading(false);
-        setSeatMapError('');
-    };
-
     const handleSelectWorkshop = (workshop) => {
-        resetSeatMapState();
+        setRegistrationError('');
         setSelectedWorkshop(workshop);
     };
 
-    const handleCloseWorkshop = () => {
-        resetSeatMapState();
-        setSelectedWorkshop(null);
-    };
+    const handleCloseWorkshop = () => setSelectedWorkshop(null);
     const [isRegistering, setIsRegistering] = useState(false);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -122,13 +60,16 @@ const WorkshopListPage = () => {
     const [totalPages, setTotalPages] = useState(0);
     const [totalElements, setTotalElements] = useState(0);
 
-    const fetchWorkshops = useCallback(async (page = 0) => {
-        const data = await workshopService.getAll(page, PAGE_SIZE);
+    const receivePage = useCallback((data) => {
         setWorkshops(data.content || []);
         setCurrentPage(data.page);
         setTotalPages(data.totalPages);
         setTotalElements(data.totalElements);
     }, []);
+
+    const fetchWorkshops = async (page) => {
+        receivePage(await workshopService.getAll(page, PAGE_SIZE));
+    };
 
     const handleRegister = async () => {
         if (!selectedWorkshop) return;
@@ -212,334 +153,107 @@ const WorkshopListPage = () => {
     };
 
     useEffect(() => {
-        const loadWorkshops = async () => {
-            try {
-                await fetchWorkshops();
-            } catch (err) {
-                setError(err.message);
-            } finally {
-                setLoading(false);
-            }
-        };
-        loadWorkshops();
-    }, [fetchWorkshops]);
+        let active = true;
+        workshopService.getAll(0, PAGE_SIZE)
+            .then((data) => {
+                if (!active) return;
+                receivePage(data);
+                if (requestedWorkshopId != null) {
+                    setSelectedWorkshop(data.content?.find((item) => item.id === requestedWorkshopId) || null);
+                }
+            })
+            .catch((err) => {
+                if (active) setError(err.message || 'We couldn’t load workshops. Please try again.');
+            })
+            .finally(() => {
+                if (active) setLoading(false);
+            });
 
-    if (loading) {
-        return (
-            <div className="flex min-h-screen items-center justify-center bg-gray-50">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" />
-            </div>
-        );
-    }
+        return () => { active = false; };
+    }, [loadAttempt, receivePage, requestedWorkshopId]);
+
+    const retry = () => {
+        setLoading(true);
+        setError('');
+        setLoadAttempt((attempt) => attempt + 1);
+    };
+
+    const handlePageChange = async (page) => {
+        setError('');
+        try {
+            await fetchWorkshops(page);
+            const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            window.scrollTo({ top: 0, behavior: reducedMotion ? 'instant' : 'smooth' });
+        } catch (err) {
+            setError(err.message || 'We couldn’t load that page. Please try again.');
+        }
+    };
 
     return (
-        <div className="min-h-screen bg-gray-50 p-6 mx-auto max-w-7xl">
-            {/* Header */}
-            <div className="mb-8 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div className="student-experience" aria-label="Workshop catalog">
+            <header className="workshop-catalog-header">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-900">Workshop Catalog</h1>
-                    <p className="mt-1 text-sm text-gray-500">
-                        Discover and register for exciting workshops at UniHub.
-                    </p>
+                    <h1>Explore workshops</h1>
+                    <p>Find a session that fits your schedule and reserve your seat.</p>
                 </div>
-                <div className="hidden sm:flex items-center gap-2 mt-1">
-                    <div className="w-8 h-1.5 bg-emerald-500"></div> 
-                    
-                    <span className="text-sm font-semibold text-emerald-900 uppercase tracking-wider">
-                        | Registered Workshop
-                    </span>
-                </div>
-                <button
-                    onClick={() => navigate('/registration-history')}
-                    className="rounded-lg border border-indigo-600 px-4 py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50 transition"
-                >
-                    Registration history
-                </button>
-            </div>
+                <Link to="/registration-history" className="student-button">
+                    My registrations <span aria-hidden="true">→</span>
+                </Link>
+            </header>
 
-            {error && (
-                <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
-            )}
-
-            {workshops.length === 0 ? (
-                <div className="rounded-2xl bg-white p-12 text-center shadow-sm border border-gray-100">
-                    <p className="text-gray-400">No workshops are available yet. Please check back later.</p>
-                </div>
-            ) : (
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    {workshops.map((w) => {
-                        const registrationState = getRegistrationState(w);
-
-                        return (
-                            <div
-                                key={w.id}
-                                className={`group cursor-pointer rounded-2xl bg-white p-5 shadow-sm border transition-all hover:shadow-md hover:border-indigo-200 ${
-                                    registrationState?.tone === 'success'
-                                        ? 'border-emerald-300 ring-2 ring-emerald-200 bg-emerald-50/30 shadow-emerald-100/60'
-                                        : registrationState?.tone === 'pending'
-                                            ? 'border-amber-300 ring-2 ring-amber-200 bg-amber-50/30 shadow-amber-100/60'
-                                            : 'border-gray-100'
-                                }`}
-                                onClick={() => handleSelectWorkshop(w)}
-                            >
-                                <div className="flex items-start justify-between">
-                                    <h3 className="text-base font-semibold text-gray-900 group-hover:text-indigo-600 transition">
-                                        {w.title}
-                                    </h3>
-                                    <div className="ml-2 flex flex-col items-end gap-1">
-                                        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                                            Number(w.price) === 0
-                                                ? 'bg-emerald-100 text-emerald-700'
-                                                : 'bg-amber-100 text-amber-700'
-                                        }`}>
-                                            {formatPrice(w.price)}
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div className="mt-3 flex items-center gap-2">
-                                    <div className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-indigo-700 ring-1 ring-inset ring-indigo-700/10">
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="size-3.5 opacity-70">
-                                            <path d="M10 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3.465 14.493a1.23 1.23 0 0 0 .41 1.412A9.957 9.957 0 0 0 10 18c2.31 0 4.438-.784 6.131-2.1.43-.333.604-.903.408-1.41a7.002 7.002 0 0 0-13.074.003Z" />
-                                        </svg>
-                                        <span className="text-xs font-bold tracking-tight">
-                                            <span className="mr-1 opacity-60 font-medium">Speaker:</span>
-                                            {w.speaker}
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <p className="mt-2 text-sm text-gray-500 line-clamp-2">{formatDescription(w.description)}</p>
-
-                                <div className="mt-3 flex items-center justify-between gap-3 text-xs text-gray-500">
-                                    {w.roomName ? (
-                                        <span className="font-semibold text-gray-700">
-                                            {w.roomName}
-                                        </span>
-                                    ) : (
-                                        <span className="font-semibold text-gray-500 italic">
-                                            Room TBA
-                                        </span>
-                                    )}
-                                    {w.layoutMapUrl ? (
-                                        <span className="rounded-md bg-sky-50 px-2 py-1 font-semibold text-sky-700">
-                                            Seat map available
-                                        </span>
-                                    ) : (
-                                        <span className="rounded-md bg-gray-100 px-2 py-1 font-semibold text-gray-500">
-                                            No seat map available
-                                        </span>
-                                    )}
-                                </div>
-
-                                <div className="mt-2 pt-3 border-t border-gray-50 flex flex-col gap-2.5">
-                                    <div className="flex flex-col gap-3">
-                                        <div className="flex flex-col">
-                                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Workshop Date</span>
-                                            <span className="text-[13px] font-semibold text-gray-800 leading-tight">
-                                                {formatDateTime(w.startTime)}
-                                            </span>
-                                        </div>
-                                        
-                                        <div className="flex flex-col">
-                                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Registration End</span>
-                                            <span className="text-[13px] text-gray-500 font-medium leading-tight">
-                                                {formatDateTime(w.registrationEndTime)}
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-2 pt-1">
-                                        <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border ${
-                                            w.remainingSlots === 0 
-                                                ? 'bg-red-50 text-red-600 border-red-100' 
-                                                : 'bg-indigo-50 text-indigo-600 border-indigo-100'
-                                        }`}>
-                                            {w.remainingSlots === 0 ? 'FULL' : `${w.remainingSlots} SEATS LEFT`}
-                                        </span>
-                                        
-                                        {!isRegistrationStarted(w) && (
-                                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md border border-gray-200 bg-gray-50 text-gray-400">
-                                                UPCOMING
-                                            </span>
-                                        )}
-
-                                        {isRegistrationClosed(w) && (
-                                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md border border-gray-200 bg-gray-50 text-gray-400">
-                                                CLOSED
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
+            <section className="student-section" aria-labelledby="catalog-results" aria-busy={loading}>
+                <div className="student-section-heading">
+                    <h2 id="catalog-results">Workshop catalog</h2>
+                    {!loading && !error && (
+                        <p>{totalElements} {totalElements === 1 ? 'workshop' : 'workshops'}</p>
                     )}
                 </div>
-            )}
-
-            {/* Pagination */}
-            <PaginationControl
-                currentPage={currentPage}
-                totalPages={totalPages}
-                totalElements={totalElements}
-                pageSize={PAGE_SIZE}
-                onPageChange={(newPage) => {
-                    setCurrentPage(newPage);
-                    fetchWorkshops(newPage);
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
-                itemLabel="workshops"
-            />
-
-            {/* Workshop Detail Modal */}
-            {selectedWorkshop && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={handleCloseWorkshop}>
-                    <div
-                        className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <h2 className="text-xl font-bold text-gray-900">{selectedWorkshop.title}</h2>
-
-                        <div className="mt-4 space-y-3">
-                            <div className="flex items-start gap-2">
-                                <span className="text-sm font-medium text-gray-500 w-36 shrink-0">Time:</span>
-                                <span className="text-sm text-gray-700 font-semibold">{formatDateTime(selectedWorkshop.startTime)}</span>
-                            </div>
-                            <div className="flex items-start gap-2">
-                                <span className="text-sm font-medium text-gray-500 w-36 shrink-0">Speaker:</span>
-                                <span className="text-sm text-gray-700 font-semibold">{selectedWorkshop.speaker}</span>
-                            </div>
-                            <div className="flex items-start gap-2">
-                                <span className="text-sm font-medium text-gray-500 w-36 shrink-0">Room:</span>
-                                <span className="text-sm text-gray-700">
-                                    {selectedWorkshop.roomName || 'Room TBA'}
-                                    {selectedWorkshop.roomCapacity ? ` (${selectedWorkshop.roomCapacity} seats)` : ''}
-                                </span>
-                            </div>
-                            <div className="flex items-start gap-2">
-                                <span className="text-sm font-medium text-gray-500 w-36 shrink-0">Ends:</span>
-                                <span className="text-sm text-gray-700">{formatDateTime(selectedWorkshop.endTime)}</span>
-                            </div>
-                            
-                            {/* Bổ sung Registration Starts */}
-                            <div className="flex items-start gap-2 border-t border-gray-50 pt-2">
-                                <span className="text-sm font-medium text-gray-500 w-36 shrink-0">Registration starts:</span>
-                                <span className="text-sm text-gray-700">{formatDateTime(selectedWorkshop.registrationStartTime)}</span>
-                            </div>
-                            
-                            <div className="flex items-start gap-2">
-                                <span className="text-sm font-medium text-gray-500 w-36 shrink-0">Registration ends:</span>
-                                <span className="text-sm text-gray-700">{formatDateTime(selectedWorkshop.registrationEndTime)}</span>
-                            </div>
-                            
-                            <div className="flex items-start gap-2 border-t border-gray-50 pt-2">
-                                <span className="text-sm font-medium text-gray-500 w-36 shrink-0">Price:</span>
-                                <span className={`text-sm font-bold ${
-                                    Number(selectedWorkshop.price) === 0 ? 'text-emerald-600' : 'text-amber-600'
-                                }`}>
-                                    {formatPrice(selectedWorkshop.price)}
-                                </span>
-                            </div>
-                            <div className="flex items-start gap-2">
-                                <span className="text-sm font-medium text-gray-500 w-36 shrink-0">Seats:</span>
-                                <span className="text-sm text-gray-700">
-                                    {selectedWorkshop.remainingSlots} seats left
-                                </span>
-                            </div>
-                        </div>
-
-                        <div className="mt-4">
-                            <h4 className="text-sm font-medium text-gray-500 mb-1">Description:</h4>
-                            <p className="text-sm text-gray-700 whitespace-pre-wrap">{formatDescription(selectedWorkshop.description)}</p>
-                        </div>
-
-                        {/* Seat map */}
-                        <div className="mt-4 border-t border-gray-50 pt-3">
-                            <h4 className="text-sm font-medium text-gray-500 mb-2">
-                                Seat map: {!selectedWorkshop.layoutMapUrl && <span className="font-normal italic">Unavailable</span>}
-                            </h4>
-
-                            {selectedWorkshop.layoutMapUrl && (
-                                <>
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <button
-                                            onClick={() => {
-                                                setShowSeatMap((s) => !s);
-                                                if (!showSeatMap) {
-                                                    setSeatMapLoading(true);
-                                                    setSeatMapError('');
-                                                }
-                                            }}
-                                            className="rounded-md border px-3 py-1 text-sm bg-white hover:bg-gray-50"
-                                        >
-                                            {showSeatMap ? 'Hide seat map' : 'View seat map'}
-                                        </button>
-                                    </div>
-
-                                    {showSeatMap && (
-                                        <div className="w-full overflow-hidden rounded-lg border border-gray-100 bg-gray-50 p-3">
-                                            {seatMapLoading && (
-                                                <div className="mb-2 text-sm text-gray-500">Loading seat map...</div>
-                                            )}
-                                            {seatMapError && (
-                                                <div className="mb-2 text-sm text-red-600">Failed to load seat map</div>
-                                            )}
-                                            <img
-                                                src={selectedWorkshop.layoutMapUrl}
-                                                alt={getSeatMapAlt(selectedWorkshop)}
-                                                loading="lazy"
-                                                className="max-h-[55vh] w-full rounded object-contain"
-                                                onLoad={() => setSeatMapLoading(false)}
-                                                onError={() => { setSeatMapLoading(false); setSeatMapError('error'); }}
-                                            />
-                                        </div>
-                                    )}
-                                </>
-                            )}
-                        </div>
-
-                        {selectedWorkshop.userRegistrationStatus && (
-                            <div className="mt-4">
-                                <h4 className="text-sm font-medium text-gray-500 mb-1">Registration status:</h4>
-                                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                                    selectedWorkshop.userRegistrationStatus === 'SUCCESS'
-                                        ? 'bg-emerald-100 text-emerald-700'
-                                        : 'bg-amber-100 text-amber-700'
-                                }`}>
-                                    {selectedWorkshop.userRegistrationStatus === 'SUCCESS' ? 'Registered' : 'Payment pending'}
-                                </span>
-                            </div>
-                        )}
-
-                        {registrationError && (
-                            <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded text-sm">
-                                {registrationError}
-                            </div>
-                        )}
-
-                            <div className="mt-6 flex justify-end gap-3">
-                            <button
-                                onClick={handleCloseWorkshop}
-                                disabled={isRegistering}
-                                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition disabled:opacity-50"
-                            >
-                                Close
-                            </button>
-                            <button
-                                onClick={handleRegister}
-                                disabled={
-                                    selectedWorkshop.remainingSlots === 0
-                                    || isRegistering
-                                    || !isRegistrationOpen(selectedWorkshop)
-                                    || Boolean(selectedWorkshop.userRegistrationStatus)
-                                }
-                                className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                            >
-                                {getRegisterButtonLabel(selectedWorkshop, isRegistering)}
-                            </button>
-                        </div>
+                {error && (
+                    <div className="student-notice student-notice--error" role="alert">
+                        <p>{error}</p>
+                        {!workshops.length && <button className="student-text-link" type="button" onClick={retry}>Try again</button>}
                     </div>
+                )}
+                {loading ? (
+                    <p className="student-notice" role="status">Loading workshops…</p>
+                ) : workshops.length ? (
+                    <div className="workshop-grid">
+                        {workshops.map((workshop, index) => (
+                            <WorkshopCard
+                                key={workshop.id}
+                                workshop={workshop}
+                                index={index}
+                                onOpen={handleSelectWorkshop}
+                            />
+                        ))}
+                    </div>
+                ) : !error && (
+                    <p className="student-notice">No workshops are available yet.</p>
+                )}
+
+                <div className="workshop-pagination">
+                    <PaginationControl
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        totalElements={totalElements}
+                        pageSize={PAGE_SIZE}
+                        onPageChange={handlePageChange}
+                        itemLabel="workshops"
+                    />
                 </div>
+            </section>
+
+            {selectedWorkshop && (
+                <WorkshopDetailsDialog
+                    workshop={selectedWorkshop}
+                    registerLabel={getRegisterButtonLabel(selectedWorkshop, isRegistering)}
+                    canRegister={selectedWorkshop.remainingSlots !== 0 && !isRegistering
+                        && isRegistrationOpen(selectedWorkshop) && !selectedWorkshop.userRegistrationStatus}
+                    busy={isRegistering}
+                    error={registrationError}
+                    onRegister={handleRegister}
+                    onClose={handleCloseWorkshop}
+                />
             )}
 
             {/* Payment Modal */}
@@ -571,10 +285,9 @@ const WorkshopListPage = () => {
                 />
             )}
 
-            {/* Registration Success Modal */}
-            {registrationData && (
-                <RegistrationSuccessModal
-                    isOpen={showSuccessModal}
+            {registrationData && showSuccessModal && (
+                <WorkshopTicketDialog
+                    justRegistered
                     qrCode={registrationData.qrCode}
                     workshopTitle={registrationData.title || 'Workshop'}
                     onClose={() => {

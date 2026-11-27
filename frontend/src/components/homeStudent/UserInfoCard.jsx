@@ -1,28 +1,16 @@
-import React from 'react';
+import { Link } from 'react-router-dom';
 
-const UserInfoCard = ({ user, onViewProfile }) => {
+export default function UserInfoCard({ user }) {
     return (
-        <section className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100 hover:shadow-md transition">
-            <h3 className="text-sm font-semibold text-gray-500 uppercase mb-3">Your Info</h3>
-            <div className="space-y-2">
-                <p className="text-sm text-gray-700">
-                    <span className="font-medium">Name:</span> {user?.fullName}
-                </p>
-                <p className="text-sm text-gray-700">
-                    <span className="font-medium">Email:</span> {user?.email}
-                </p>
-                <p className="text-sm text-gray-700">
-                    <span className="font-medium">Student ID:</span> {user?.studentCode || 'N/A'}
-                </p>
+        <section className="student-account" aria-labelledby="student-account-title">
+            <span className="student-account-avatar" aria-hidden="true">{user?.fullName?.trim().charAt(0).toUpperCase() || 'U'}</span>
+            <div>
+                <h2 id="student-account-title">{user?.fullName || 'Your profile'}</h2>
+                {(user?.email || user?.studentCode) && (
+                    <p>{[user?.email, user?.studentCode].filter(Boolean).join(' · ')}</p>
+                )}
             </div>
-            <button
-                onClick={onViewProfile}
-                className="mt-4 w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 transition"
-            >
-                View Profile
-            </button>
+            <Link className="student-button" to="/profile">View profile <span aria-hidden="true">→</span></Link>
         </section>
     );
-};
-
-export default UserInfoCard;
+}
