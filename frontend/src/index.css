@@ -1,14 +1,30 @@
 @import "tailwindcss";
 
+:root {
+    --ui-color-ink: #211934;
+    --ui-color-muted: #625b72;
+    --ui-color-brand: #5635ce;
+    --ui-color-brand-hover: #4426ac;
+    --ui-color-border: #e8e1f2;
+    --ui-color-surface: #fff;
+    --ui-space-2: 0.5rem;
+    --ui-space-3: 0.75rem;
+    --ui-space-4: 1rem;
+    --ui-space-5: 1.25rem;
+    --ui-focus-color: var(--ui-color-brand);
+    --ui-focus-width: 2px;
+    --ui-focus-offset: 3px;
+}
+
 .app-nav {
     background: rgb(255 255 255 / 94%);
     backdrop-filter: blur(12px);
     box-shadow: 0 2px 12px rgb(28 22 52 / 5%);
 }
 
-.app-nav :is(a, button):focus-visible {
-    outline: 2px solid #5635ce;
-    outline-offset: 3px;
+:where(.app-nav, .auth-layout, .student-experience) :is(a, button):focus-visible {
+    outline: var(--ui-focus-width) solid var(--ui-focus-color);
+    outline-offset: var(--ui-focus-offset);
 }
 
 .app-nav-link {

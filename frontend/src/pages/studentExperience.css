@@ -1,13 +1,9 @@
 .student-experience {
-    --student-ink: #211934;
-    --student-muted: #625b72;
-    --student-accent: #5635ce;
-    --student-line: #e8e1f2;
     width: min(100%, 80rem);
     margin-inline: auto;
     padding: clamp(1rem, 3vw, 2.75rem);
     padding-bottom: 4rem;
-    color: var(--student-ink);
+    color: var(--ui-color-ink);
 }
 
 .student-hero,
@@ -19,6 +15,7 @@
 }
 
 .student-hero {
+    --ui-focus-color: #e2d6ff;
     display: flex;
     align-items: end;
     min-height: 23rem;
@@ -76,10 +73,10 @@
     gap: 0.55rem;
     min-height: 44px;
     padding: 0.65rem 0.95rem;
-    border: 1px solid var(--student-line);
+    border: 1px solid var(--ui-color-border);
     border-radius: 0.75rem;
-    background: #fff;
-    color: var(--student-accent);
+    background: var(--ui-color-surface);
+    color: var(--ui-color-brand);
     font-size: 0.9rem;
     font-weight: 700;
 }
@@ -117,15 +114,6 @@
     opacity: 0.55;
 }
 
-.student-experience :is(a, button):focus-visible {
-    outline: 2px solid var(--student-accent);
-    outline-offset: 3px;
-}
-
-.student-hero :is(a, button):focus-visible {
-    outline-color: #e2d6ff;
-}
-
 .student-section {
     margin-top: clamp(1.75rem, 4vw, 3rem);
 }
@@ -135,7 +123,7 @@
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 0.5rem 1rem;
+    gap: var(--ui-space-2) var(--ui-space-4);
     margin-bottom: 0.9rem;
 }
 
@@ -146,7 +134,7 @@
 }
 
 .student-section-heading p {
-    color: var(--student-muted);
+    color: var(--ui-color-muted);
     font-size: 0.9rem;
 }
 
@@ -155,7 +143,7 @@
     align-items: center;
     gap: 0.35rem;
     min-height: 44px;
-    color: var(--student-accent);
+    color: var(--ui-color-brand);
     font-size: 0.9rem;
     font-weight: 700;
 }
@@ -170,7 +158,7 @@
     flex-wrap: wrap;
     align-items: end;
     justify-content: space-between;
-    gap: 1rem;
+    gap: var(--ui-space-4);
     padding: clamp(1.5rem, 4vw, 3.5rem);
     border: 1px solid #e9e0fa;
     background: radial-gradient(ellipse at 100% 0, #e2d3ff, transparent 65%), #f5efff;
@@ -194,13 +182,13 @@
 }
 
 .workshop-catalog-header p {
-    color: var(--student-muted);
+    color: var(--ui-color-muted);
 }
 
 .workshop-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 1rem;
+    gap: var(--ui-space-4);
 }
 
 .workshop-card {
@@ -208,9 +196,9 @@
     flex-direction: column;
     min-width: 0;
     overflow: hidden;
-    border: 1px solid var(--student-line);
+    border: 1px solid var(--ui-color-border);
     border-radius: 1.25rem;
-    background: #fff;
+    background: var(--ui-color-surface);
     box-shadow: 0 3px 10px rgb(38 22 71 / 4%);
 }
 
@@ -264,7 +252,7 @@
     place-items: center;
     padding: 0.4rem 0.6rem;
     border-radius: 0.75rem;
-    background: #fff;
+    background: var(--ui-color-surface);
     color: #312044;
     font-size: 0.73rem;
     font-weight: 750;
@@ -281,7 +269,7 @@
     margin-left: auto;
     padding: 0.35rem 0.65rem;
     border-radius: 100px;
-    background: #fff;
+    background: var(--ui-color-surface);
     color: #312044;
     font-size: 0.8rem;
     font-weight: 750;
@@ -292,7 +280,7 @@
     flex: 1;
     flex-direction: column;
     gap: 0.45rem;
-    padding: clamp(0.95rem, 2vw, 1.25rem);
+    padding: clamp(0.95rem, 2vw, var(--ui-space-5));
     overflow-wrap: anywhere;
 }
 
@@ -305,7 +293,7 @@
 
 .workshop-meta,
 .workshop-card-description {
-    color: var(--student-muted);
+    color: var(--ui-color-muted);
     font-size: 0.875rem;
 }
 
@@ -330,7 +318,7 @@
     gap: 0.3rem 0.6rem;
     margin-top: auto;
     padding-top: 0.25rem;
-    border-top: 1px solid var(--student-line);
+    border-top: 1px solid var(--ui-color-border);
 }
 
 .workshop-status {
@@ -359,7 +347,7 @@
     min-height: 44px;
     margin-left: auto;
     border-radius: 0.3rem;
-    color: var(--student-accent);
+    color: var(--ui-color-brand);
     font-size: 0.875rem;
     font-weight: 750;
 }
@@ -372,10 +360,10 @@
 .student-notice,
 .student-account {
     padding: 1.2rem;
-    border: 1px solid var(--student-line);
+    border: 1px solid var(--ui-color-border);
     border-radius: 1.15rem;
-    background: #fff;
-    color: var(--student-muted);
+    background: var(--ui-color-surface);
+    color: var(--ui-color-muted);
 }
 
 .student-notice--error {
@@ -395,7 +383,7 @@
 }
 
 .student-account h2 {
-    color: var(--student-ink);
+    color: var(--ui-color-ink);
     font-weight: 750;
 }
 
@@ -424,10 +412,10 @@
     max-height: calc(100dvh - 2rem);
     margin: auto;
     overflow: auto;
-    border: 1px solid var(--student-line);
+    border: 1px solid var(--ui-color-border);
     border-radius: 1.25rem;
-    background: #fff;
-    color: var(--student-ink);
+    background: var(--ui-color-surface);
+    color: var(--ui-color-ink);
     box-shadow: 0 24px 64px rgb(33 25 52 / 27%);
 }
 
