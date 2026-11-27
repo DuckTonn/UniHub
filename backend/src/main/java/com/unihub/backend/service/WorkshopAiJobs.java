@@ -2,6 +2,7 @@ package com.unihub.backend.service;
 
 import com.unihub.backend.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,6 +12,7 @@ import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class WorkshopAiJobs {
     private static final int MAX_ACTIVE_JOBS = 20;
 
@@ -33,7 +35,7 @@ public class WorkshopAiJobs {
         if (otherActiveJobs >= MAX_ACTIVE_JOBS) {
             return false;
         }
-        jdbc.update("""
+        Long generation = jdbc.queryForObject("""
                 INSERT INTO workshop_ai_documents
                     (workshop_id, status, document, original_description, original_speaker)
                 SELECT id, 'QUEUED', ?, description, speaker FROM workshops WHERE id = ?
@@ -41,7 +43,9 @@ public class WorkshopAiJobs {
                 SET generation = EXCLUDED.generation, status = 'QUEUED', document = EXCLUDED.document,
                     original_description = EXCLUDED.original_description, original_speaker = EXCLUDED.original_speaker,
                     attempts = 0, available_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP, error = NULL
-                """, document, workshopId);
+                RETURNING generation
+                """, Long.class, document, workshopId);
+        log.info("Queued AI document for workshop {} generation {}", workshopId, generation);
         return true;
     }
 
@@ -106,6 +110,7 @@ public class WorkshopAiJobs {
     }
 
     public void fail(Job job, boolean retryable, String error) {
+        log.warn("AI document attempt failed for workshop {} generation {} attempt {}", job.workshopId(), job.generation(), job.attempt());
         if (retryable && job.attempt() < 3) {
             jdbc.update("""
                     UPDATE workshop_ai_documents SET status = 'QUEUED', error = ?,

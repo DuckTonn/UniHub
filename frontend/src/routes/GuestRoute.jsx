@@ -7,7 +7,7 @@ const GuestRoute = () => {
 
     if (isAuthenticated) {
         const from = state?.from;
-        const destination = user?.role === 'ADMIN' ? '/admin' : from || '/';
+        const destination = user?.role === 'ADMIN' ? '/admin' : user?.role === 'STAFF' ? '/check-in' : from || '/';
         return <Navigate to={destination} replace />;
     }
 

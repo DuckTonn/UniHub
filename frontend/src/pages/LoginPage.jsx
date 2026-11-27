@@ -7,6 +7,7 @@ import authService from '../services/authService';
 const LoginPage = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [asStaff, setAsStaff] = useState(false);
     const [error, setError] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -17,7 +18,7 @@ const LoginPage = () => {
         setIsSubmitting(true);
 
         try {
-            const session = await authService.webLogin({ email, password });
+            const session = await (asStaff ? authService.appLogin({ email, password }) : authService.webLogin({ email, password }));
             await login(session);
         } catch (err) {
             setError(err.message || 'We couldn’t sign you in. Please try again.');
@@ -58,6 +59,11 @@ const LoginPage = () => {
                     autoComplete="current-password"
                     required
                 />
+                <label htmlFor="staff-login" className="auth-staff-choice">
+                    <input type="checkbox" id="staff-login" checked={asStaff}
+                        onChange={(event) => setAsStaff(event.target.checked)} />
+                    Sign in as check-in staff
+                </label>
                 <button type="submit" className="auth-submit" disabled={isSubmitting}>
                     {isSubmitting && <span className="auth-submit-spinner" aria-hidden="true" />}
                     {isSubmitting ? 'Signing in…' : 'Sign in'}

@@ -230,4 +230,18 @@ public interface RegistrationRepository extends JpaRepository<Registration, Long
     Page<Registration> findAttendancesByWorkshopId(
             @Param("workshopId") Long workshopId,
             Pageable pageable);
+
+    String ATTENDANCE_FILTER = """
+            where r.workshop.id = :workshopId and r.status = 'SUCCESS'
+              and (:checkedIn is null or (:checkedIn = true and cr is not null)
+                    or (:checkedIn = false and cr is null))
+              and (:keyword = '' or locate(lower(:keyword), lower(u.fullName)) > 0
+                    or locate(lower(:keyword), lower(u.studentCode)) > 0
+                    or locate(lower(:keyword), lower(u.email)) > 0)
+            """;
+
+    @Query(value = "select r from Registration r join fetch r.user u left join fetch r.checkinRecord cr "
+            + ATTENDANCE_FILTER + " order by case when cr is not null then 1 else 0 end desc, r.createdAt, r.id",
+            countQuery = "select count(r) from Registration r join r.user u left join r.checkinRecord cr " + ATTENDANCE_FILTER)
+    Page<Registration> searchAttendances(Long workshopId, Boolean checkedIn, String keyword, Pageable pageable);
 }

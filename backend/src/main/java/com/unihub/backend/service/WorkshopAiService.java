@@ -72,7 +72,7 @@ public class WorkshopAiService {
             return;
         }
         jobs.complete(job, summary, boundedText(result.getSpeaker(), 255));
-        log.info("Processed AI document for workshop {}", job.workshopId());
+        log.info("Processed AI document for workshop {} generation {}", job.workshopId(), job.generation());
     }
 
     private static String boundedText(String text, int maxCodePoints) {

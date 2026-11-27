@@ -78,6 +78,10 @@ public interface WorkshopRepository extends JpaRepository<Workshop, Long> {
     )
     Page<Workshop> findAllWithRoom(Pageable pageable);
 
+    @Query(value = "select w from Workshop w join fetch w.room where w.status = :status order by w.startTime, w.id",
+            countQuery = "select count(w) from Workshop w where w.status = :status")
+    Page<Workshop> findAllWithRoomByStatus(String status, Pageable pageable);
+
     @Query("SELECT w FROM Workshop w JOIN FETCH w.room WHERE w.status = 'PUBLISHED' ORDER BY w.id ASC")
     List<Workshop> findAllPublishedWithRoom();
 

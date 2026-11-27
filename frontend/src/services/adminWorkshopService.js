@@ -10,8 +10,8 @@ const adminWorkshopService = {
      * @param {number} size - page size (default 12)
      * @returns {Promise<PageResponse>} - { content, page, size, totalElements, totalPages, last }
      */
-    getAll(page = 0, size = 12) {
-        return axiosClient.get(adminWorkshopUrl, { params: { page, size } });
+    getAll(page = 0, size = 12, status) {
+        return axiosClient.get(adminWorkshopUrl, { params: { page, size, status: status || undefined } });
     },
 
     /**
@@ -86,8 +86,8 @@ const adminWorkshopService = {
      * @param {number} page - 0-indexed page number (default 0)
      * @param {number} size - items per page (default 5)
      */
-    getAttendances(id, page = 0, size = 5) {
-        return axiosClient.get(`${adminWorkshopUrl}/${id}/attendances`, { params: { page, size } });
+    getAttendances(id, page = 0, size = 5, filters = {}) {
+        return axiosClient.get(`${adminWorkshopUrl}/${id}/attendances`, { params: { page, size, ...filters } });
     },
 
     /**

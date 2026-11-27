@@ -6,6 +6,7 @@ import com.unihub.backend.exception.ConflictException;
 import com.unihub.backend.exception.PaymentFailedException;
 import com.unihub.backend.exception.PaymentGatewayUnavailableException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 
@@ -13,6 +14,7 @@ import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class PaymentService {
 
     private final RegistrationService registrations;
@@ -24,6 +26,7 @@ public class PaymentService {
         if (attempt.settled() != null) {
             return toApiResult(attempt.settled());
         }
+        log.info("Started provider lookup for payment {}", attempt.id());
         var result = attempt.closeIfMissing()
                 ? readProviderOutcome(attempt).orElseThrow(this::unavailable)
                 : charge(attempt);
@@ -35,8 +38,10 @@ public class PaymentService {
             return;
         }
         registrations.reconciliationAttempt(paymentId).ifPresent(attempt ->
-                readProviderOutcome(attempt)
-                        .ifPresent(result -> settle(paymentId, result)));
+                readProviderOutcome(attempt).ifPresent(result -> {
+                    settle(paymentId, result);
+                    log.info("Reconciled payment {}", paymentId);
+                }));
     }
 
     private Optional<PaymentGatewayResult> readProviderOutcome(RegistrationService.PaymentAttempt attempt) {

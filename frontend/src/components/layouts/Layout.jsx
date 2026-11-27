@@ -25,7 +25,8 @@ const Layout = () => {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [unread, setUnread] = useState(null);
     const unreadSession = useRef(null);
-    const userId = isAuthenticated ? user?.id : null;
+    const canViewInbox = isAuthenticated && user?.role !== 'STAFF';
+    const userId = canViewInbox ? user?.id : null;
     const refreshUnreadCount = useCallback(() => {
         const session = unreadSession.current;
         if (!userId || session?.userId !== userId) return;
@@ -57,8 +58,10 @@ const Layout = () => {
     const isActive = (path) => location.pathname === path;
 
     const navLinks = isAuthenticated ? (
-        user?.role === 'ADMIN' 
-            ? [{ path: '/', label: 'Home' }]
+        user?.role === 'ADMIN'
+            ? [{ path: '/admin', label: 'Dashboard' }, { path: '/admin/payments', label: 'Payments' }]
+            : user?.role === 'STAFF'
+                ? [{ path: '/check-in', label: 'Check-in' }]
             : [
                 { path: '/', label: 'Home' },
                 { path: '/workshops', label: 'Workshops' },
@@ -92,7 +95,7 @@ const Layout = () => {
                                         {link.label}
                                     </Link>
                                 ))}
-                                <NotificationLink count={unreadCount} active={isActive("/notifications")} />
+                                {canViewInbox && <NotificationLink count={unreadCount} active={isActive('/notifications')} />}
                                 <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
                                     <div className="text-right">
                                         <p className="text-xs font-semibold text-gray-700">{user?.fullName}</p>
@@ -127,7 +130,7 @@ const Layout = () => {
                     </div>
 
                     <div className="flex items-center gap-3 sm:hidden">
-                        {isAuthenticated && <NotificationLink count={unreadCount} active={isActive('/notifications')}
+                        {canViewInbox && <NotificationLink count={unreadCount} active={isActive('/notifications')}
                             onClick={() => setIsMobileMenuOpen(false)} />}
                         <button
                             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}

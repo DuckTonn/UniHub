@@ -27,7 +27,7 @@ axiosClient.interceptors.response.use(
     },
     async (error) => {
         const originalRequest = error.config;
-        const isLoginRequest = originalRequest?.url === '/auth/login/web';
+        const isLoginRequest = ['/auth/login/web', '/auth/login/app'].includes(originalRequest?.url);
 
         // Prevent infinite loops by checking if we already tried to refresh
         if (error.response?.status === 401 && originalRequest && !isLoginRequest && !originalRequest._retry) {
@@ -60,7 +60,10 @@ axiosClient.interceptors.response.use(
         }
 
         const formattedError = handleApiError(error);
-        return Promise.reject(new Error(formattedError));
+        const failure = new Error(formattedError);
+        const requestId = error.response?.headers?.['x-request-id'];
+        if (typeof requestId === 'string' && /^[0-9a-f]{32}$/.test(requestId)) failure.requestId = requestId;
+        return Promise.reject(failure);
     }
 );
 

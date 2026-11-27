@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import sys
 import time
 from datetime import datetime
@@ -44,7 +45,7 @@ def request(base, path, expected_status, *, token=None, method="GET", data=None,
         body = response.read()
         if response.status != expected_status:
             message = f"{method} {path}: expected {expected_status}, got {response.status}"
-            if not path.startswith("/api/v1/auth/"):
+            if not path.startswith(("/api/v1/auth/", "/api/v1/checkins/")) and not path.endswith("/pay"):
                 message += f": {body[:500].decode(errors='replace')}"
             raise AssertionError(message)
         return body, response.headers
@@ -101,6 +102,7 @@ def main(base, env_file, student_id, admin_id):
         verify_outbox_registration(base, web_access, student, os.environ["OUTBOX_FIXTURE_WORKSHOP"])
         verify_payment_and_checkin(base, web_access, staff_access, student, os.environ["PAYMENT_FIXTURE_WORKSHOP"])
         verify_document_job(base, admin, web_access, os.environ["PAYMENT_FIXTURE_WORKSHOP"])
+        verify_admin_operations(base, admin, staff_access, web_access, os.environ["PAYMENT_FIXTURE_WORKSHOP"])
 
     for path in ("/actuator/health", "/summarize"):
         request(base, path, 404)
@@ -174,6 +176,34 @@ def verify_payment_and_checkin(base, web_access, staff_access, another_student, 
         assert result["totalReceived"] == 2 and result["failedCount"] == 1
         assert result["successCount"] == success and result["duplicateCount"] == duplicate
         assert result["failures"][0]["qrCode"] == "unknown-ticket"
+
+
+def verify_admin_operations(base, admin, staff, student, workshop_id):
+    workshops = "/api/v1/admin/workshops"
+    body, _ = request(base, f"{workshops}?status=PUBLISHED&size=1", 200, token=admin)
+    published = json.loads(body)
+    assert published["totalElements"] > 0 and all(row["status"] == "PUBLISHED" for row in published["content"])
+
+    attendance = f"{workshops}/{workshop_id}/attendances"
+    request(base, attendance, 400, token=staff)
+    awaiting, _ = request(base, f"{attendance}?checkedIn=false", 200, token=admin)
+    assert json.loads(awaiting)["totalElements"] == 0
+    checked_in, _ = request(base, f"{attendance}?checkedIn=true&q=Contract&size=1", 200, token=admin)
+    assert json.loads(checked_in)["totalElements"] == 1
+
+    payments = f"/api/v1/admin/payments?workshopId={workshop_id}"
+    request(base, payments, 400, token=student)
+    request(base, payments, 400, token=staff)
+    complete, headers = request(base, f"{payments}&status=COMPLETED", 200, token=admin)
+    assert len(headers.get_all("X-Request-ID", [])) == 1
+    assert re.fullmatch(r"[0-9a-f]{32}", headers["X-Request-ID"])
+    items = json.loads(complete)["content"]
+    assert len(items) == 1 and items[0]["transactionReference"] and items[0].get("issue") is None
+    assert not {"qrCode", "idempotencyKey", "failureReason"} & items[0].keys()
+    request(base, f"{workshops}/{workshop_id}/cancel", 200, token=admin, method="PUT")
+    refunds, _ = request(base, f"{payments}&status=REFUND_REQUIRED", 200, token=admin)
+    items = json.loads(refunds)["content"]
+    assert len(items) == 1 and items[0]["status"] == "COMPLETED" and "Workshop cancelled" in items[0]["issue"]
 
 
 def verify_document_job(base, admin, student, workshop_id):
