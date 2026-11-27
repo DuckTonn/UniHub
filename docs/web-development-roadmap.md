@@ -10,6 +10,8 @@ Lộ trình tiếp tục từ cổng API Spring, React/Vite và các màn hình 
 
 ### Chạy bộ kiểm thử mốc 1
 
+Dùng Node.js 22.19 trở lên và npm 11.6.3 trở lên, theo yêu cầu của frontend.
+
 ```sh
 cd frontend
 npm ci
