@@ -1,12 +1,52 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { UnreadNotificationsContext } from '../../context/UnreadNotificationsContext';
+import notificationService from '../../services/notificationService';
+
+function NotificationLink({ count, active, onClick }) {
+    const label = count == null ? 'Notifications' : `Notifications, ${count} unread`;
+    return (
+        <Link to="/notifications" onClick={onClick} aria-label={label} aria-current={active ? 'page' : undefined}
+            className="relative flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-600 hover:bg-indigo-50">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14.5 18.5a2.5 2.5 0 0 1-5 0m8.5-4.5V9a6 6 0 1 0-12 0v5l-2 2h16l-2-2Z" />
+            </svg>
+            {count > 0 && <span aria-hidden="true" className="app-notification-count">{count > 99 ? '99+' : count}</span>}
+        </Link>
+    );
+}
 
 const Layout = () => {
     const { user, isAuthenticated, logout } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [unread, setUnread] = useState(null);
+    const unreadSession = useRef(null);
+    const userId = isAuthenticated ? user?.id : null;
+    const refreshUnreadCount = useCallback(() => {
+        const session = unreadSession.current;
+        if (!userId || session?.userId !== userId) return;
+        const request = ++session.request;
+        notificationService.getUnreadCount().then((count) => {
+            if (session === unreadSession.current && request === session.request) setUnread({ userId, count });
+        }).catch(() => {
+            // A later focus or read action retries without hiding a previously loaded count.
+        });
+    }, [userId]);
+
+    useEffect(() => {
+        unreadSession.current = { userId, request: 0 };
+        refreshUnreadCount();
+        window.addEventListener('focus', refreshUnreadCount);
+        return () => {
+            unreadSession.current = null;
+            window.removeEventListener('focus', refreshUnreadCount);
+        };
+    }, [refreshUnreadCount, userId]);
+
+    const unreadCount = userId && unread?.userId === userId ? unread.count : null;
 
     const handleLogout = () => {
         logout();
@@ -51,26 +91,7 @@ const Layout = () => {
                                         {link.label}
                                     </Link>
                                 ))}
-                                <Link
-                                    to="/notifications"
-                                    className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 text-gray-600 hover:border-indigo-200 hover:text-indigo-600 transition"
-                                    title="Notifications"
-                                >
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="1.5"
-                                        className="h-5 w-5"
-                                    >
-                                        <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            d="M14.5 18.5a2.5 2.5 0 0 1-5 0m8.5-4.5V9a6 6 0 1 0-12 0v5l-2 2h16l-2-2Z"
-                                        />
-                                    </svg>
-                                </Link>
+                                <NotificationLink count={unreadCount} active={isActive("/notifications")} />
                                 <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
                                     <div className="text-right">
                                         <p className="text-xs font-semibold text-gray-700">{user?.fullName}</p>
@@ -104,15 +125,18 @@ const Layout = () => {
                         )}
                     </div>
 
-                    {/* Mobile Menu Button */}
-                    <button
-                        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                        aria-expanded={isMobileMenuOpen}
-                        aria-label={isMobileMenuOpen ? 'Close navigation' : 'Open navigation'}
-                        className="sm:hidden p-2 rounded-md hover:bg-gray-100"
-                    >
-                        {isMobileMenuOpen ? '✕' : '☰'}
-                    </button>
+                    <div className="flex items-center gap-3 sm:hidden">
+                        {isAuthenticated && <NotificationLink count={unreadCount} active={isActive('/notifications')}
+                            onClick={() => setIsMobileMenuOpen(false)} />}
+                        <button
+                            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                            aria-expanded={isMobileMenuOpen}
+                            aria-label={isMobileMenuOpen ? 'Close navigation' : 'Open navigation'}
+                            className="p-2 rounded-md hover:bg-gray-100"
+                        >
+                            {isMobileMenuOpen ? '✕' : '☰'}
+                        </button>
+                    </div>
                 </div>
 
                 {/* Mobile Navigation */}
@@ -140,16 +164,6 @@ const Layout = () => {
                                             {link.label}
                                         </Link>
                                     ))}
-                                    <Link
-                                        to="/notifications"
-                                        onClick={() => setIsMobileMenuOpen(false)}
-                                        className={`text-sm font-medium px-3 py-2 rounded-md transition-colors sm:hidden ${isActive('/notifications')
-                                            ? 'bg-indigo-100 text-indigo-700'
-                                            : 'text-gray-600 hover:bg-gray-100'
-                                            }`}
-                                    >
-                                        Notifications
-                                    </Link>
                                     <button
                                         onClick={() => {
                                             handleLogout();
@@ -185,7 +199,9 @@ const Layout = () => {
             </nav>
 
             <main>
-                <Outlet />
+                <UnreadNotificationsContext.Provider value={refreshUnreadCount}>
+                    <Outlet />
+                </UnreadNotificationsContext.Provider>
             </main>
 
             <footer className="border-y border-gray-200 bg-white py-10">

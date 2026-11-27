@@ -22,6 +22,23 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
 
     List<Notification> findByStatusAndRetryCountLessThan(String status, int maxRetries);
 
+    String UNREAD_INBOX = """
+            FROM notifications n
+            WHERE n.channel = 'IN_APP' AND n.status = 'SUCCESS'
+              AND (n.user_id = :userId OR n.user_id IS NULL)
+              AND NOT EXISTS (
+                    SELECT 1 FROM notification_read_receipts r
+                    WHERE r.user_id = :userId AND r.notification_id = n.id
+              )
+            """;
+
+    @Query(value = "SELECT n.* " + UNREAD_INBOX + " ORDER BY n.created_at DESC, n.id DESC",
+            countQuery = "SELECT COUNT(*) " + UNREAD_INBOX, nativeQuery = true)
+    Page<Notification> findUnread(@Param("userId") Long userId, Pageable pageable);
+
+    @Query(value = "SELECT COUNT(*) " + UNREAD_INBOX, nativeQuery = true)
+    long countUnread(@Param("userId") Long userId);
+
     @Query(value = """
             SELECT notification_id FROM notification_read_receipts
             WHERE user_id = :userId AND notification_id IN (:notificationIds)

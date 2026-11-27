@@ -34,6 +34,26 @@ class NotificationReadIntegrationTest {
     }
 
     @Test
+    void unreadPagesAndCountUseTheSamePersonalAndBroadcastVisibility() {
+        var users = jdbc.queryForList("SELECT id FROM users ORDER BY id LIMIT 2", Long.class);
+        Long reader = users.getFirst();
+        long baseline = notifications.countUnread(reader);
+        Long broadcast = insertNotification(null, "IN_APP", "SUCCESS");
+        Long personal = insertNotification(reader, "IN_APP", "SUCCESS");
+        insertNotification(users.getLast(), "IN_APP", "SUCCESS");
+        insertNotification(reader, "EMAIL", "SUCCESS");
+
+        assertThat(notifications.countUnread(reader)).isEqualTo(baseline + 2);
+        var firstPage = notifications.getUserNotifications(reader, 0, 1, true);
+        assertThat(firstPage.getTotalElements()).isEqualTo(baseline + 2);
+        assertThat(firstPage.getContent()).extracting(NotificationResponse::id).containsExactly(personal);
+        notifications.markRead(reader, personal);
+        assertThat(notifications.countUnread(reader)).isEqualTo(baseline + 1);
+        assertThat(notifications.getUserNotifications(reader, 0, 1, true).getContent())
+                .extracting(NotificationResponse::id).containsExactly(broadcast);
+    }
+
+    @Test
     void notificationsOutsideTheInboxCannotBeMarkedRead() {
         var users = jdbc.queryForList("SELECT id FROM users ORDER BY id LIMIT 2", Long.class);
         Long personal = insertNotification(users.getLast(), "IN_APP", "SUCCESS");

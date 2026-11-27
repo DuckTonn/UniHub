@@ -2,6 +2,7 @@ package com.unihub.backend.service;
 
 import com.unihub.backend.dto.PageResponse;
 import com.unihub.backend.dto.WorkshopAttendanceResponse;
+import com.unihub.backend.dto.WorkshopFilters;
 import com.unihub.backend.dto.WorkshopRequest;
 import com.unihub.backend.dto.WorkshopResponse;
 import com.unihub.backend.dto.WorkshopStatsResponse;
@@ -112,10 +113,18 @@ public class WorkshopService {
      * @param size   number of items per page (default 12)
      */
     public PageResponse<WorkshopResponse> getPublishedWorkshops(Long userId, int page, int size) {
+        return getPublishedWorkshops(userId, page, size, new WorkshopFilters(null, null, null, null, false));
+    }
+
+    public PageResponse<WorkshopResponse> getPublishedWorkshops(Long userId, int page, int size, WorkshopFilters filters) {
         Map<Long, String> userRegistrationStatuses = getUserRegistrationStatuses(userId);
 
-        Page<Workshop> workshopPage = workshopRepository.findAllPublishedWithRoom(
-                PageRequest.of(page, size));
+        PageRequest paging = PageRequest.of(page, size);
+        Page<Workshop> workshopPage = filters.isEmpty() ? workshopRepository.findAllPublishedWithRoom(paging)
+                : workshopRepository.searchPublishedWithRoom(filters.q(),
+                        filters.from() == null, filters.from() == null ? null : filters.from().atStartOfDay(),
+                        filters.to() == null, filters.to() == null ? null : filters.to().plusDays(1).atStartOfDay(),
+                        filters.fee() == null ? "" : filters.fee().name(), filters.seatsAvailable(), paging);
 
         List<Long> workshopIds = workshopPage.getContent().stream().map(Workshop::getId).toList();
         Map<Long, Long> successfulCounts = getSuccessfulCountsForWorkshops(workshopIds);

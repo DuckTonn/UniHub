@@ -6,6 +6,7 @@ import com.unihub.backend.dto.PaymentResultResponse;
 import com.unihub.backend.dto.RegistrationResponse;
 import com.unihub.backend.dto.UserRegistrationResponse;
 import com.unihub.backend.dto.WorkshopResponse;
+import com.unihub.backend.dto.WorkshopFilters;
 import com.unihub.backend.service.PaymentService;
 import com.unihub.backend.service.RegistrationService;
 import com.unihub.backend.service.WorkshopService;
@@ -18,10 +19,12 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -44,8 +47,14 @@ public class WorkshopController {
     public ResponseEntity<PageResponse<WorkshopResponse>> getAllWorkshops(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "12") int size,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) WorkshopFilters.Fee fee,
+            @RequestParam(defaultValue = "false") boolean seatsAvailable,
             Authentication authentication) {
-        return ResponseEntity.ok(workshopService.getPublishedWorkshops(resolveUserId(authentication), page, size));
+        var filters = new WorkshopFilters(q, from, to, fee, seatsAvailable);
+        return ResponseEntity.ok(workshopService.getPublishedWorkshops(resolveUserId(authentication), page, size, filters));
     }
 
     @GetMapping("/{id}")

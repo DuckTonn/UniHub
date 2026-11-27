@@ -23,6 +23,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/v1/notifications")
 @RequiredArgsConstructor
@@ -42,9 +44,17 @@ public class NotificationController {
     public ResponseEntity<PageResponse<NotificationResponse>> getMyNotifications(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "false") boolean unreadOnly,
             Authentication authentication) {
 
-        return ResponseEntity.ok(notificationService.getUserNotifications(requireUserId(authentication), page, size));
+        return ResponseEntity.ok(notificationService.getUserNotifications(requireUserId(authentication), page, size, unreadOnly));
+    }
+
+    @GetMapping("/unread-count")
+    @Operation(summary = "Count unread notifications in the authenticated user's inbox")
+    @SecurityRequirement(name = OpenApiConfig.BEARER_AUTH_SCHEME)
+    public ResponseEntity<Map<String, Long>> countUnread(Authentication authentication) {
+        return ResponseEntity.ok(Map.of("unreadCount", notificationService.countUnread(requireUserId(authentication))));
     }
 
     @PutMapping("/{notificationId}/read")

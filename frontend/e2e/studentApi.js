@@ -18,6 +18,9 @@ export const test = base.extend({
             { id: 1, title: 'Design Thinking Studio', price: 0, remainingSlots: 8 },
             { id: 2, title: 'Mobile App Prototyping', price: 99000, remainingSlots: 4, userRegistrationStatus: 'PENDING' },
             { id: 3, title: 'Research Methods', price: 0, remainingSlots: 0 },
+            ...Array.from({ length: 10 }, (_, index) => ({
+                id: index + 4, title: `Campus workshop ${index + 4}`, price: 0, remainingSlots: 6,
+            })),
         ].map((workshop) => ({ ...times, ...workshop, speaker: 'Casey Nguyen', roomName: 'Innovation Lab',
             description: 'Work through a campus design challenge.' }));
         const booking = (workshop, extra) => ({
@@ -63,9 +66,27 @@ export const test = base.extend({
                 return reply({ accessToken: 'e2e-access-token', refreshToken: 'e2e-refresh-token', userId: 5, role: 'STUDENT' });
             }
             if (method === 'GET' && path === '/auth/me') return reply(userProfile);
-            if (method === 'GET' && path === '/workshops') return paginate(workshops);
+            if (method === 'GET' && path === '/workshops') {
+                const keyword = url.searchParams.get('q')?.toLowerCase() ?? '';
+                const from = url.searchParams.get('from');
+                const to = url.searchParams.get('to');
+                const fee = url.searchParams.get('fee');
+                const seatsAvailable = url.searchParams.get('seatsAvailable') === 'true';
+                return paginate(workshops.filter((item) => {
+                    const date = item.startTime.slice(0, 10);
+                    return (item.title.toLowerCase().includes(keyword) || item.speaker.toLowerCase().includes(keyword))
+                        && (!from || date >= from) && (!to || date <= to)
+                        && (fee === 'FREE' ? item.price === 0 : fee === 'PAID' ? item.price > 0 : true)
+                        && (!seatsAvailable || item.remainingSlots > 0);
+                }));
+            }
             if (method === 'GET' && path === '/workshops/my-workshops') return paginate(registrations);
-            if (method === 'GET' && path === '/notifications') return paginate(notices);
+            if (method === 'GET' && path === '/notifications') {
+                return paginate(url.searchParams.get('unreadOnly') === 'true' ? notices.filter((item) => !item.read) : notices);
+            }
+            if (method === 'GET' && path === '/notifications/unread-count') {
+                return reply({ unreadCount: notices.filter((item) => !item.read).length });
+            }
             if (method === 'POST' && path === '/workshops/1/register') {
                 calls.registrations.push(1);
                 if (workshops[0].userRegistrationStatus) return reply({ message: 'Already registered' }, 409);
