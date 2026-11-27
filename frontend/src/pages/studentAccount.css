@@ -1,0 +1,256 @@
+.profile-cover {
+    position: relative;
+    isolation: isolate;
+    display: flex;
+    align-items: center;
+    gap: clamp(0.9rem, 3vw, 1.75rem);
+    min-height: 12rem;
+    padding: clamp(1.25rem, 5vw, 3rem);
+    overflow: hidden;
+    border-radius: clamp(1.25rem, 3vw, 2rem);
+    background: radial-gradient(ellipse at 98% 0, #6d46b5, transparent 72%), #28174c;
+    color: #fff;
+}
+
+.profile-cover::after {
+    position: absolute;
+    z-index: -1;
+    top: -9rem;
+    right: -4rem;
+    width: 23rem;
+    aspect-ratio: 1;
+    border: 1px solid rgb(255 255 255 / 17%);
+    border-radius: 50%;
+    box-shadow: 0 0 0 18px rgb(255 255 255 / 7%), 0 0 0 39px rgb(255 255 255 / 5%);
+    content: '';
+}
+
+.profile-avatar {
+    display: grid;
+    flex: 0 0 auto;
+    width: clamp(3.5rem, 11vw, 6rem);
+    aspect-ratio: 1;
+    place-items: center;
+    border: 1px solid rgb(255 255 255 / 45%);
+    border-radius: 1.05rem;
+    background: linear-gradient(150deg, #9974ef, #603cc1);
+    color: #fff;
+    font-size: clamp(1.25rem, 3vw, 2.25rem);
+    font-weight: 750;
+}
+
+.profile-intro { min-width: 0; overflow-wrap: anywhere; }
+
+.profile-intro h1 {
+    font-size: clamp(2rem, 6vw, 3.75rem);
+    font-weight: 760;
+    letter-spacing: -0.06em;
+    line-height: 1.04;
+}
+
+.profile-intro p {
+    margin: 0.35rem 0 0.6rem;
+    color: #eee7fa;
+}
+
+.profile-panels {
+    display: grid;
+    align-items: start;
+    gap: var(--ui-space-4);
+}
+
+.account-panel {
+    min-width: 0;
+    padding: clamp(1rem, 3vw, 1.65rem);
+    border: 1px solid var(--ui-color-border);
+    border-radius: 1.15rem;
+    background: var(--ui-color-surface);
+    box-shadow: 0 3px 12px rgb(38 22 71 / 5%);
+}
+
+.account-panel h2 {
+    font-size: clamp(1.2rem, 3vw, 1.55rem);
+    font-weight: 750;
+    letter-spacing: -0.035em;
+}
+
+.account-panel-heading,
+.profile-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.65rem;
+}
+
+.account-panel-heading { justify-content: space-between; }
+
+.account-panel-copy {
+    margin: 0.55rem 0 0.9rem;
+    color: var(--ui-color-muted);
+}
+
+.profile-fields {
+    display: grid;
+    gap: 0.8rem;
+    margin-top: 0.85rem;
+}
+
+.profile-fields div {
+    padding: var(--ui-space-3);
+    border: 1px solid var(--ui-color-border);
+    border-radius: 0.75rem;
+    background: #fbf8ff;
+    overflow-wrap: anywhere;
+}
+
+.profile-fields dt {
+    color: var(--ui-color-muted);
+    font-size: 0.8rem;
+}
+
+.profile-fields dd {
+    margin-top: 0.2rem;
+    font-weight: 650;
+}
+
+.profile-feedback {
+    margin-top: 0.8rem;
+    padding: var(--ui-space-3);
+    border-radius: 0.75rem;
+    background: #f2ebff;
+    color: #4d3280;
+    font-size: 0.9rem;
+}
+
+.profile-feedback--error { background: #fff2f4; color: #88243c; }
+
+.inbox {
+    max-width: 62rem;
+    margin-inline: auto;
+}
+
+.student-section-heading .inbox-count {
+    padding: 0.3rem 0.65rem;
+    border-radius: 100px;
+    background: #ece3fd;
+    color: #513195;
+    font-weight: 700;
+}
+
+.inbox-list { display: grid; gap: 0.7rem; }
+
+.inbox-item {
+    border: 1px solid var(--ui-color-border);
+    border-inline-start: 3px solid transparent;
+    border-radius: 1rem;
+    background: var(--ui-color-surface);
+    box-shadow: 0 3px 12px rgb(38 22 71 / 4%);
+}
+
+.inbox-item[data-unread="true"] {
+    border-color: #ded0fb;
+    border-inline-start-color: #6e4bce;
+    background: #f9f5ff;
+}
+
+.inbox-trigger {
+    display: grid;
+    grid-template-columns: 0.55rem minmax(0, 1fr) auto 0.7rem;
+    align-items: center;
+    gap: 0.65rem;
+    width: 100%;
+    min-height: 64px;
+    padding: 0.85rem clamp(0.7rem, 3vw, 1.15rem);
+    border-radius: 0.85rem;
+    text-align: start;
+}
+
+.inbox-trigger:hover { background: #f2ebff; }
+
+.inbox-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+}
+
+.inbox-item[data-unread="true"] .inbox-dot {
+    background: #6e4bce;
+    box-shadow: 0 0 0 3px rgb(110 75 206 / 14%);
+}
+
+.inbox-heading {
+    display: grid;
+    gap: 0.2rem;
+    overflow-wrap: anywhere;
+}
+
+.inbox-item-title { font-weight: 650; }
+.inbox-item[data-unread="true"] .inbox-item-title { font-weight: 760; }
+.inbox-time { color: var(--ui-color-muted); font-size: 0.82rem; }
+
+.inbox-state {
+    padding: 0.2rem 0.45rem;
+    border-radius: 100px;
+    background: #f1edf5;
+    color: #5c4d69;
+    font-size: 0.72rem;
+    font-weight: 750;
+}
+
+.inbox-state--new { background: #eadeff; color: #4d2897; }
+
+.inbox-chevron {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-inline-end: 2px solid currentColor;
+    border-block-end: 2px solid currentColor;
+    transform: rotate(45deg);
+}
+
+.inbox-trigger[aria-expanded="true"] .inbox-chevron { transform: rotate(225deg); }
+
+.inbox-detail {
+    padding: var(--ui-space-4) clamp(0.8rem, 3vw, var(--ui-space-5));
+    border-top: 1px solid var(--ui-color-border);
+    border-radius: 0 0 1rem 1rem;
+    background: var(--ui-color-surface);
+    color: var(--ui-color-muted);
+}
+
+.inbox-message {
+    overflow-x: auto;
+    overflow-wrap: anywhere;
+    line-height: 1.6;
+}
+
+.inbox-message :is(p, table, ul, ol):not(:last-child) { margin-bottom: 0.55rem; }
+.inbox-message :is(ul, ol) { padding-inline-start: 1.35rem; }
+.inbox-message ul { list-style: disc; }
+.inbox-message ol { list-style: decimal; }
+.inbox-message :is(h2, h3, h4, th) { font-weight: 750; }
+.inbox-message :is(th, td) { padding: 0.35rem; border: 1px solid var(--ui-color-border); }
+.inbox-message a { color: var(--ui-color-brand); text-decoration: underline; }
+.inbox-read-error { margin-top: 0.8rem; color: #88243c; }
+
+@media (min-width: 35rem) {
+    .profile-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (min-width: 60rem) {
+    .profile-panels { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
+}
+
+@media (max-width: 28rem) {
+    .profile-actions button { flex: 1 1 auto; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .inbox-item { transition: background-color 180ms ease, border-color 180ms ease; }
+    .inbox-chevron { transition: transform 180ms ease; }
+    .inbox-detail:not([hidden]), .profile-feedback { animation: account-reveal 180ms ease-out both; }
+
+    @keyframes account-reveal {
+        from { opacity: 0; transform: translateY(-3px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+}

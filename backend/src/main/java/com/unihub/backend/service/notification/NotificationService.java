@@ -27,6 +27,7 @@ import org.springframework.beans.factory.annotation.Value;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -51,11 +52,14 @@ public class NotificationService {
         Page<Notification> result = notificationRepository.findInAppNotificationsForUser(
                 userId,
                 "IN_APP",
-                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt", "id"))
         );
 
+        List<Long> notificationIds = result.getContent().stream().map(Notification::getId).toList();
+        Set<Long> readIds = notificationIds.isEmpty()
+                ? Set.of() : Set.copyOf(notificationRepository.findReadIds(userId, notificationIds));
         List<NotificationResponse> content = result.getContent().stream()
-                .map(this::toResponse)
+                .map(notification -> toResponse(notification, readIds.contains(notification.getId())))
                 .toList();
 
         return PageResponse.<NotificationResponse>builder()
@@ -66,6 +70,14 @@ public class NotificationService {
                 .totalPages(result.getTotalPages())
                 .last(result.isLast())
                 .build();
+    }
+
+    @Transactional
+    public void markRead(Long userId, Long notificationId) {
+        if (notificationRepository.insertReadReceipt(userId, notificationId) == 0
+                && !notificationRepository.isVisibleInInbox(userId, notificationId)) {
+            throw new ResourceNotFoundException("Notification not found");
+        }
     }
 
     public void handleRegistrationSuccess(WorkshopRegistrationSuccessEvent event) {
@@ -187,7 +199,7 @@ public class NotificationService {
         return batches;
     }
 
-    private NotificationResponse toResponse(Notification notification) {
+    private NotificationResponse toResponse(Notification notification, boolean read) {
         return NotificationResponse.builder()
                 .id(notification.getId())
                 .title(notification.getTitle())
@@ -195,6 +207,7 @@ public class NotificationService {
                 .channel(notification.getChannel())
                 .status(notification.getStatus())
                 .createdAt(notification.getCreatedAt())
+                .read(read)
                 .build();
     }
 }

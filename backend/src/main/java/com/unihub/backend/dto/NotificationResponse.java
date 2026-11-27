@@ -10,6 +10,7 @@ public record NotificationResponse(
         String contentHtml,
         String channel,
         String status,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        boolean read
 ) {
 }
