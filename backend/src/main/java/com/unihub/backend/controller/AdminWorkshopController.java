@@ -15,6 +15,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -28,6 +29,7 @@ import java.util.List;
 @RequiredArgsConstructor
 @Tag(name = "Workshop Management", description = "CRUD endpoints for workshops.")
 public class AdminWorkshopController {
+    public enum WorkshopStatus { DRAFT, PUBLISHED, COMPLETED, CANCELLED }
 
     private final WorkshopService workshopService;
     private final WorkshopAiJobs aiJobs;
@@ -46,8 +48,9 @@ public class AdminWorkshopController {
             @Parameter(description = "0-indexed page number", example = "0")
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @Parameter(description = "Number of workshops per page (max 100)", example = "12")
-            @RequestParam(defaultValue = "12") @Min(1) @Max(100) int size) {
-        return ResponseEntity.ok(workshopService.getAllWorkshops(page, size));
+            @RequestParam(defaultValue = "12") @Min(1) @Max(100) int size,
+            @RequestParam(required = false) WorkshopStatus status) {
+        return ResponseEntity.ok(workshopService.getAllWorkshops(page, size, status == null ? null : status.name()));
     }
 
     @GetMapping("/{id}")
@@ -229,8 +232,10 @@ public class AdminWorkshopController {
     })
     public ResponseEntity<com.unihub.backend.dto.PageResponse<com.unihub.backend.dto.WorkshopAttendanceResponse>> getWorkshopAttendances(
             @PathVariable Long id,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "5") int size) {
-        return ResponseEntity.ok(workshopService.getWorkshopAttendances(id, page, size));
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "5") @Min(1) @Max(100) int size,
+            @RequestParam(required = false) Boolean checkedIn,
+            @RequestParam(defaultValue = "") @Size(max = 120) String q) {
+        return ResponseEntity.ok(workshopService.getWorkshopAttendances(id, page, size, checkedIn, q.strip()));
     }
 }

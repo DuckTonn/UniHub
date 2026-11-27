@@ -5,7 +5,7 @@
  */
 export const handleApiError = (error) => {
     if (error.response) {
-        const { message, error: errorType, status } = error.response.data;
+        const { message, error: errorType, status } = error.response.data ?? {};
 
         if (message) return message;
         if (errorType) return `Error ${status}: ${errorType}`;

@@ -57,4 +57,12 @@ Cache dữ liệu đọc dùng bộ nhớ riêng cho mỗi tài khoản, dùng l
 - Liên kết mã yêu cầu với log để truy vết lỗi gateway, backend và worker. Theo dõi các chỉ số tổng hợp và tránh ghi mã QR, JWT hoặc nội dung thông báo vào telemetry.
 - Điều kiện nghiệm thu là chạy lại các bài diễn tập lỗi Redis, phục hồi PostgreSQL và rollback image trên staging trước khi phát hành cho người dùng.
 
+### Vận hành mốc 4
+
+- ADMIN lọc trạng thái workshop trước khi phân trang, dùng **Drafts to review** để xem bản nháp và mở **View Attendances** để tra cứu tên, mã sinh viên, email hoặc trạng thái check-in trên toàn bộ danh sách.
+- ADMIN mở **Review payments** từ dashboard hoặc một workshop có phí. Bộ lọc **Needs review** gồm giao dịch đang xử lý, thất bại, yêu cầu hoàn tiền và giao dịch đã thu tiền của workshop bị hủy. Mã tham chiếu và trạng thái gốc giúp đối chiếu với nhà cung cấp. Thao tác đối soát chỉ đọc. Xác nhận và ghi nhận việc hoàn tiền theo quy trình của nhà cung cấp.
+- STAFF chọn **Sign in as check-in staff**, tìm và chọn workshop rồi quét bằng thiết bị nhập như bàn phím hoặc dán mã. Web gửi trực tuyến qua API đồng bộ idempotent của Android và phân biệt thành công, trùng và bị từ chối. Android tiếp tục hỗ trợ đồng bộ ngoại tuyến. Giờ quét web dùng múi giờ campus `Asia/Ho_Chi_Minh`.
+- Tìm **Request ID** hiển thị khi thao tác lỗi trong log Nginx, gateway và backend. Từ log backend nối sang worker bằng mã thanh toán, UUID sự kiện thông báo hoặc cặp mã workshop và generation AI. Các bản ghi này dùng định danh vận hành và không ghi payload, QR, JWT hay nội dung thông báo. Prometheus theo dõi số giao dịch `PROCESSING` và `REFUND_REQUIRED` trong sổ cái.
+- Job Compose chạy smoke qua gateway và diễn tập lỗi Redis, phục hồi PostgreSQL, rollback image trên hạ tầng CI tạm. Trước khi phát hành, chạy lại trên staging theo [runbook Phase 6](microservices-phase-6.md) và lưu kết quả của từng bài diễn tập.
+
 Nên bắt đầu với mốc 1 để các thay đổi tìm kiếm, hiệu năng và thao tác quản trị sau đó có kiểm thử hồi quy bao phủ.

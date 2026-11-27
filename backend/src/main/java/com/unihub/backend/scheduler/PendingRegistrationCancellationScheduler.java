@@ -39,7 +39,7 @@ public class PendingRegistrationCancellationScheduler {
             try {
                 paymentService.reconcile(paymentId);
             } catch (RuntimeException exception) {
-                log.warn("Could not reconcile payment {}", paymentId, exception);
+                log.warn("Could not reconcile payment {} ({})", paymentId, exception.getClass().getSimpleName());
             }
         }
     }

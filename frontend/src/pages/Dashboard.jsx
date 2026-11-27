@@ -4,6 +4,7 @@ import adminWorkshopService from '../services/adminWorkshopService';
 import { useAuth } from '../context/AuthContext';
 import { useReadCache, useReadQuery } from '../context/readQueries';
 import DeferredContent from '../components/common/DeferredContent';
+import OperationError from '../components/common/OperationError';
 import PaginationControl from '../components/common/PaginationControl';
 import toast from 'react-hot-toast';
 
@@ -46,8 +47,9 @@ const Dashboard = () => {
     const navigate = useNavigate();
 
     const [page, setPage] = useState(0);
-    const read = useCallback(() => adminWorkshopService.getAll(page, PAGE_SIZE), [page]);
-    const { data, loading, error: readError, retry } = useReadQuery('adminWorkshops', [page, PAGE_SIZE], read);
+    const [status, setStatus] = useState('');
+    const read = useCallback(() => adminWorkshopService.getAll(page, PAGE_SIZE, status), [page, status]);
+    const { data, loading, error: readError, retry } = useReadQuery('adminWorkshops', [page, PAGE_SIZE, status], read);
     const workshops = data?.content ?? data ?? [];
     const currentPage = data?.page ?? page;
     const totalPages = data?.totalPages ?? (workshops.length ? 1 : 0);
@@ -118,7 +120,7 @@ const Dashboard = () => {
             setPage(nextPage);
             setError('');
         } catch (err) {
-            setError(err.message);
+            setError(err);
             setDeleteConfirm(null);
         }
     };
@@ -127,10 +129,11 @@ const Dashboard = () => {
         try {
             await adminWorkshopService.cancel(id);
             cache.invalidate('adminWorkshops', 'statistics', 'workshops', 'registrations', 'notifications');
+            if (status === 'PUBLISHED' && workshops.length === 1 && page > 0) setPage(page - 1);
             setCancelConfirm(null);
             setError('');
         } catch (err) {
-            setError(err.message);
+            setError(err);
             setCancelConfirm(null);
         }
     };
@@ -139,9 +142,10 @@ const Dashboard = () => {
         try {
             await adminWorkshopService.publish(id);
             cache.invalidate('adminWorkshops', 'statistics', 'workshops');
+            if (status === 'DRAFT' && workshops.length === 1 && page > 0) setPage(page - 1);
             setError('');
         } catch (err) {
-            setError(err.message);
+            setError(err);
         }
     };
 
@@ -150,7 +154,7 @@ const Dashboard = () => {
             const data = await adminWorkshopService.getStats(id);
             setStatsData(data);
         } catch (err) {
-            setError(err.message);
+            setError(err);
         }
     };
 
@@ -210,14 +214,18 @@ const Dashboard = () => {
         <>
             <div className="min-h-screen bg-gray-50 p-6 mx-auto max-w-7xl">
                 {/* Dashboard Header */}
-                <div className="mb-6 flex items-center justify-between">
+                <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
                     <div>
                         <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
                         <p className="mt-1 text-gray-500">
                             Logged in as <span className="font-medium text-indigo-600">{user?.fullName ?? 'Admin'}</span>
                         </p>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <button type="button" onClick={() => navigate('/admin/payments')}
+                            className="rounded-xl border border-indigo-200 bg-white px-4 py-2.5 text-sm font-semibold text-indigo-700">
+                            Review payments
+                        </button>
                         {user?.role === 'ADMIN' && (
                             <button
                                 onClick={() => setCreateAccountOpen(true)}
@@ -262,26 +270,36 @@ const Dashboard = () => {
                     </button>
                 </div>
 
-                {/* Error Banner */}
+                <label className="mb-4 flex flex-wrap items-center gap-2 text-sm font-semibold text-gray-700">
+                    Workshop status
+                    <select className="rounded-lg border border-gray-300 bg-white p-2" value={status} onChange={(event) => {
+                        setStatus(event.target.value);
+                        setPage(0);
+                        setError('');
+                    }}>
+                        <option value="">All workshops</option>
+                        <option value="DRAFT">Drafts to review</option>
+                        <option value="PUBLISHED">Published</option>
+                        <option value="COMPLETED">Completed</option>
+                        <option value="CANCELLED">Cancelled</option>
+                    </select>
+                </label>
                 {error && (
-                    <div className="mb-4 flex items-center justify-between rounded-lg bg-red-50 p-3 text-sm text-red-700" role="alert">
-                        <span>{error}</span>
-                        <button onClick={() => setError('')} className="font-medium hover:text-red-900">✕</button>
+                    <div className="mb-4">
+                        <OperationError error={error} />
+                        <button type="button" onClick={() => setError('')} className="text-sm underline">Dismiss</button>
                     </div>
                 )}
 
                 {/* Workshop Table */}
                 {loading ? <DeferredContent /> : readError ? (
-                    <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700" role="alert">
-                        <p>We couldn’t load workshops.</p>
-                        <button type="button" className="mt-2 font-semibold underline" onClick={retry}>Try again</button>
-                    </div>
+                    <OperationError error={readError} onRetry={retry} />
                 ) : workshops.length === 0 ? (
                     <div className="rounded-2xl bg-white p-12 text-center shadow-sm">
-                        <p className="text-gray-400">No workshops yet. Click "Create Workshop" to get started.</p>
+                        <p className="text-gray-500">No workshops match this status.</p>
                     </div>
                 ) : (
-                    <div className="overflow-hidden rounded-2xl bg-white shadow-sm border border-gray-100">
+                    <div className="overflow-x-auto rounded-2xl bg-white shadow-sm border border-gray-100">
                         <table className="w-full text-sm text-left">
                             <thead>
                                 <tr className="border-b bg-gray-50/50 text-[11px] uppercase tracking-wider text-gray-400">
@@ -331,6 +349,8 @@ const Dashboard = () => {
                                         <td className="px-6 py-3 text-center align-middle">
                                             <div className="relative inline-block text-left" onClick={(e) => e.stopPropagation()}>
                                                 <button
+                                                    aria-label={`Actions for ${w.title}`}
+                                                    aria-expanded={openActionId === w.id}
                                                     onClick={() => setOpenActionId(openActionId === w.id ? null : w.id)}
                                                     className={`flex items-center justify-center w-8 h-8 rounded-full transition-all duration-200 ${openActionId === w.id ? 'bg-gray-100 text-gray-900 shadow-inner' : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'}`}
                                                 >
@@ -340,7 +360,13 @@ const Dashboard = () => {
                                                 </button>
 
                                                 {openActionId === w.id && (
-                                                    <div className={`absolute right-0 z-50 w-30 rounded-md border border-gray-200 bg-white py-1 shadow-lg ${workshops.indexOf(w) >= workshops.length - 2 && workshops.length > 0 ? 'bottom-full mb-1' : 'mt-1'}`}>
+                                                    <div className="mt-1 w-36 rounded-md border border-gray-200 bg-white py-1 shadow-lg">
+                                                        {w.price > 0 && (
+                                                            <button type="button" onClick={() => navigate(`/admin/payments?workshopId=${w.id}`)}
+                                                                className="w-full px-3 py-1.5 text-left text-xs text-indigo-700 hover:bg-indigo-50">
+                                                                Review payments
+                                                            </button>
+                                                        )}
                                                         <button onClick={() => { handleViewAttendances(w); setOpenActionId(null); }} className="w-full px-3 py-1.5 text-left text-[11px] text-gray-700 hover:bg-gray-50 transition">
                                                             View Attendances
                                                         </button>

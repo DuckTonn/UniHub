@@ -1,6 +1,7 @@
 package com.unihub.backend.service.notification.outbox;
 
 import com.unihub.backend.event.WorkshopRegistrationSuccessEvent;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.event.EventListener;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -12,6 +13,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Component
+@Slf4j
 @ConditionalOnProperty(name = "notification.outbox.enabled", havingValue = "true")
 class RegistrationNotificationOutbox {
 
@@ -24,11 +26,13 @@ class RegistrationNotificationOutbox {
     @EventListener
     @Transactional(propagation = Propagation.MANDATORY)
     public void enqueue(WorkshopRegistrationSuccessEvent event) {
-        jdbc.update("""
+        UUID eventId = UUID.randomUUID();
+        int inserted = jdbc.update("""
                 INSERT INTO registration_notification_outbox (event_id, registration_id)
                 VALUES (?, ?)
                 ON CONFLICT (registration_id) DO NOTHING
-                """, UUID.randomUUID(), event.registrationId());
+                """, eventId, event.registrationId());
+        if (inserted > 0) log.info("Queued registration notification event {}", eventId);
     }
 
     Optional<UUID> lockNextUnpublished() {

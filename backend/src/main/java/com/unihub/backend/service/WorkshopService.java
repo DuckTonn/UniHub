@@ -67,8 +67,13 @@ public class WorkshopService {
      * @param size number of items per page (default 12)
      */
     public PageResponse<WorkshopResponse> getAllWorkshops(int page, int size) {
-        Page<Workshop> workshopPage = workshopRepository.findAllWithRoom(
-                PageRequest.of(page, size));
+        return getAllWorkshops(page, size, null);
+    }
+
+    public PageResponse<WorkshopResponse> getAllWorkshops(int page, int size, String status) {
+        var pageable = PageRequest.of(page, size);
+        Page<Workshop> workshopPage = status == null ? workshopRepository.findAllWithRoom(pageable)
+                : workshopRepository.findAllWithRoomByStatus(status, pageable);
 
         List<WorkshopResponse> content = workshopPage.getContent()
                 .stream()
@@ -400,13 +405,20 @@ public class WorkshopService {
      */
     public PageResponse<WorkshopAttendanceResponse> getWorkshopAttendances(
             Long workshopId, int page, int size) {
+        return getWorkshopAttendances(workshopId, page, size, null, "");
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<WorkshopAttendanceResponse> getWorkshopAttendances(
+            Long workshopId, int page, int size, Boolean checkedIn, String keyword) {
 
         findWorkshopOrThrow(workshopId);
 
         Pageable pageable = PageRequest.of(page, size);
-        Page<WorkshopAttendanceResponse> result = registrationRepository
-                .findAttendancesByWorkshopId(workshopId, pageable)
-                .map(this::toAttendanceResponse);
+        var records = checkedIn == null && keyword.isBlank()
+                ? registrationRepository.findAttendancesByWorkshopId(workshopId, pageable)
+                : registrationRepository.searchAttendances(workshopId, checkedIn, keyword, pageable);
+        var result = records.map(this::toAttendanceResponse);
 
         return PageResponse.<WorkshopAttendanceResponse>builder()
                 .content(result.getContent())

@@ -21,11 +21,14 @@ const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const StatisticsPage = lazy(() => import('./pages/StatisticsPage'));
 const RoomsPage = lazy(() => import('./pages/RoomsPage'));
+const AdminPaymentsPage = lazy(() => import('./pages/AdminPaymentsPage'));
+const StaffCheckinPage = lazy(() => import('./pages/StaffCheckinPage'));
 
 // Auto-redirect ADMIN to /admin when visiting /
 const HomeRedirect = () => {
     const { user } = useAuth();
     if (user?.role === 'ADMIN') return <Navigate to="/admin" replace />;
+    if (user?.role === 'STAFF') return <Navigate to="/check-in" replace />;
     return <HomeStudent />;
 };
 
@@ -82,9 +85,10 @@ const App = () => {
                         {/* Authenticated routes */}
                         <Route element={<ProtectedRoute />}>
 
+                            <Route path="/" element={<HomeRedirect />} />
+
                             {/* Student-only routes */}
                             <Route element={<ProtectedRoute allowedRoles={['STUDENT', 'ADMIN']} />}>
-                                <Route path="/" element={<HomeRedirect />} />
                                 <Route path="/profile" element={<ProfilePage />} />
                                 <Route path="/workshops" element={<WorkshopListPage />} />
                                 <Route path="/registration-history" element={<RegistrationHistoryPage />} />
@@ -96,6 +100,10 @@ const App = () => {
                                 <Route path="/admin" element={<Dashboard />} />
                                 <Route path="/admin/statistics" element={<StatisticsPage />} />
                                 <Route path="/admin/rooms" element={<RoomsPage />} />
+                                <Route path="/admin/payments" element={<AdminPaymentsPage />} />
+                            </Route>
+                            <Route element={<ProtectedRoute allowedRoles={['STAFF']} />}>
+                                <Route path="/check-in" element={<StaffCheckinPage />} />
                             </Route>
 
                             {/* Catch-all route for undefined URLs (404 Not Found) */}
