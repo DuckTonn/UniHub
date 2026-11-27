@@ -61,7 +61,7 @@ class WorkshopDiscoveryIntegrationTest {
 
     private Long create(Long room, String title, String speaker, LocalDateTime start, long price, boolean published) {
         Long id = workshops.createWorkshop(new WorkshopRequest(title, null, room, speaker, 5, price,
-                start, start.plusHours(1), start.minusDays(3), start.minusHours(2))).getId();
+                start, start.plusHours(1), start.minusDays(3), start.minusDays(1))).getId();
         if (published) workshops.publishWorkshop(id);
         return id;
     }
