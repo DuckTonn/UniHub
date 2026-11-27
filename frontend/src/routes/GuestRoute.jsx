@@ -1,17 +1,16 @@
-import React from 'react';
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const GuestRoute = () => {
     const { isAuthenticated, user } = useAuth();
+    const { state } = useLocation();
 
     if (isAuthenticated) {
-        // Redirect authenticated users to their specific dashboard
-        const redirectPath = user?.role === 'ADMIN' ? '/admin' : '/';
-        return <Navigate to={redirectPath} replace />;
+        const from = state?.from;
+        const destination = user?.role === 'ADMIN' ? '/admin' : from || '/';
+        return <Navigate to={destination} replace />;
     }
 
-    // Render the child routes (Login, Register) if not authenticated
     return <Outlet />;
 };
 
