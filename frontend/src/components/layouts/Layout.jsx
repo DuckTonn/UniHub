@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
@@ -28,7 +28,7 @@ const Layout = () => {
 
     return (
         <div className="min-h-screen bg-gray-50">
-            <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
+            <nav className="app-nav border-b border-gray-200 sticky top-0 z-50" aria-label="Main navigation">
                 <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
                     <Link to="/" className="text-xl sm:text-2xl font-bold text-indigo-600 flex-shrink-0">
                         UniHub
@@ -42,7 +42,8 @@ const Layout = () => {
                                     <Link
                                         key={link.path}
                                         to={link.path}
-                                        className={`text-sm font-medium px-3 py-2 rounded-md transition-colors ${isActive(link.path)
+                                        aria-current={isActive(link.path) ? 'page' : undefined}
+                                        className={`app-nav-link text-sm font-medium px-3 py-2 rounded-md ${isActive(link.path)
                                                 ? 'bg-indigo-100 text-indigo-700'
                                                 : 'text-gray-600 hover:text-indigo-600'
                                             }`}
@@ -106,6 +107,8 @@ const Layout = () => {
                     {/* Mobile Menu Button */}
                     <button
                         onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                        aria-expanded={isMobileMenuOpen}
+                        aria-label={isMobileMenuOpen ? 'Close navigation' : 'Open navigation'}
                         className="sm:hidden p-2 rounded-md hover:bg-gray-100"
                     >
                         {isMobileMenuOpen ? '✕' : '☰'}
@@ -114,7 +117,7 @@ const Layout = () => {
 
                 {/* Mobile Navigation */}
                 {isMobileMenuOpen && (
-                    <div className="sm:hidden border-t border-gray-200 bg-white">
+                    <div className="app-mobile-menu sm:hidden border-t border-gray-200 bg-white">
                         <div className="px-4 py-3 space-y-2">
                             {isAuthenticated ? (
                                 <>
@@ -128,7 +131,8 @@ const Layout = () => {
                                             key={link.path}
                                             to={link.path}
                                             onClick={() => setIsMobileMenuOpen(false)}
-                                            className={`block px-3 py-2 rounded-md text-sm font-medium transition-colors ${isActive(link.path)
+                                            aria-current={isActive(link.path) ? 'page' : undefined}
+                                            className={`app-nav-link block px-3 py-2 rounded-md text-sm font-medium ${isActive(link.path)
                                                     ? 'bg-indigo-100 text-indigo-700'
                                                     : 'text-gray-600 hover:bg-gray-100'
                                                 }`}

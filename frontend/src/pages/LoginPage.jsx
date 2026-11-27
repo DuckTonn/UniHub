@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import PasswordField from '../components/common/PasswordField';
 import authService from '../services/authService';
@@ -11,103 +11,64 @@ const LoginPage = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const { login } = useAuth();
-    const navigate = useNavigate();
-    const location = useLocation();
-
-    const from = location.state?.from?.pathname || '/';
-
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
         setIsSubmitting(true);
 
         try {
-            const response = await authService.webLogin({ email, password });
-            await login({
-                accessToken: response.accessToken,
-                refreshToken: response.refreshToken,
-                userId: response.userId,
-                role: response.role,
-            });
-
-            // If user was redirected from a specific page, send them back there.
-            // Otherwise, route to the role-specific home.
-            const roleRedirect = { STUDENT: '/student', ADMIN: '/admin' };
-            const defaultHome = roleRedirect[response.role] ?? '/';
-
-            if (response.role === 'ADMIN') {
-                navigate('/admin', { replace: true });
-            } else if (location.state?.from && location.state.from.pathname !== '/') {
-                navigate(location.state.from.pathname, { replace: true });
-            } else {
-                navigate(defaultHome, { replace: true });
-            }
+            const session = await authService.webLogin({ email, password });
+            await login(session);
         } catch (err) {
-            setError(err.message || 'Login failed');
+            setError(err.message || 'We couldn’t sign you in. Please try again.');
         } finally {
             setIsSubmitting(false);
         }
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
-            <div className="w-full max-w-md bg-white rounded-lg border border-gray-200 p-8">
-                <h2 className="text-2xl font-bold text-gray-900 text-center mb-6">
-                    Sign in to UniHub
-                </h2>
+        <section className="auth-content" aria-labelledby="login-title">
+            <h1 className="auth-title" id="login-title">Welcome back</h1>
+            <p className="auth-intro">Sign in to manage your workshops and registrations.</p>
 
-                {error && (
-                    <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded text-sm">
-                        {error}
-                    </div>
-                )}
+            {error && <p className="auth-feedback" role="alert">{error}</p>}
 
-                <form onSubmit={handleSubmit} className="space-y-5">
-                    <div>
-                        <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                            Email
-                        </label>
-                        <input
-                            id="email"
-                            type="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            required
-                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm 
-                                       focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                            placeholder="you@example.com"
-                        />
-                    </div>
-
-                    <PasswordField
-                        id="password"
-                        label="Password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
+            <form className="auth-form" onSubmit={handleSubmit} aria-busy={isSubmitting}>
+                <div>
+                    <label htmlFor="email">Email address</label>
+                    <input
+                        id="email"
+                        name="email"
+                        type="email"
+                        inputMode="email"
+                        autoComplete="username"
+                        autoCapitalize="none"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="you@example.com"
                         required
-                        placeholder="Enter your password"
-                        autoComplete="current-password"
                     />
+                </div>
+                <PasswordField
+                    id="password"
+                    label="Password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter your password"
+                    autoComplete="current-password"
+                    required
+                />
+                <button type="submit" className="auth-submit" disabled={isSubmitting}>
+                    {isSubmitting && <span className="auth-submit-spinner" aria-hidden="true" />}
+                    {isSubmitting ? 'Signing in…' : 'Sign in'}
+                    {!isSubmitting && <span aria-hidden="true">→</span>}
+                </button>
+            </form>
 
-                    <button
-                        type="submit"
-                        disabled={isSubmitting}
-                        className="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-medium 
-                                   rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 
-                                   focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {isSubmitting ? 'Signing in...' : 'Sign in'}
-                    </button>
-                </form>
-
-                <p className="mt-6 text-center text-sm text-gray-600">
-                    Don&apos;t have an account?{' '}
-                    <Link to="/register" className="text-indigo-600 hover:text-indigo-500 font-medium">
-                        Register as Student
-                    </Link>
-                </p>
-            </div>
-        </div>
+            <p className="auth-switch">
+                New to UniHub? <Link to="/register">Create a student account</Link>
+            </p>
+        </section>
     );
 };
 

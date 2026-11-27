@@ -1,8 +1,8 @@
-import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Toaster } from 'react-hot-toast';
 import Layout from './components/layouts/Layout';
+import AuthLayout from './components/layouts/AuthLayout';
 import ProtectedRoute from './routes/ProtectedRoute';
 import GuestRoute from './routes/GuestRoute';
 
@@ -67,15 +67,15 @@ const App = () => {
             />
             <BrowserRouter>
                 <Routes>
-                    <Route element={<Layout />}>
-                        {/* Always accessible public routes */}
-                        <Route path="/unauthorized" element={<UnauthorizedPage />} />
-
-                        {/* Guest-only routes (redirects to dashboard if already logged in) */}
-                        <Route element={<GuestRoute />}>
+                    <Route element={<GuestRoute />}>
+                        <Route element={<AuthLayout />}>
                             <Route path="/login" element={<LoginPage />} />
                             <Route path="/register" element={<RegisterPage />} />
                         </Route>
+                    </Route>
+                    <Route element={<Layout />}>
+                        {/* Always accessible public routes */}
+                        <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
                         {/* Authenticated routes */}
                         <Route element={<ProtectedRoute />}>

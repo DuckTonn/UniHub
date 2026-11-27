@@ -27,9 +27,10 @@ axiosClient.interceptors.response.use(
     },
     async (error) => {
         const originalRequest = error.config;
+        const isLoginRequest = originalRequest?.url === '/auth/login/web';
 
         // Prevent infinite loops by checking if we already tried to refresh
-        if (error.response?.status === 401 && !originalRequest._retry) {
+        if (error.response?.status === 401 && originalRequest && !isLoginRequest && !originalRequest._retry) {
             originalRequest._retry = true;
             
             try {

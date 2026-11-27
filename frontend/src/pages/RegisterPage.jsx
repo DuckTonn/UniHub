@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import PasswordField from '../components/common/PasswordField';
 import authService from '../services/authService';
@@ -13,163 +13,122 @@ const RegisterPage = () => {
         confirmPassword: '',
     });
     const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
+    const [success, setSuccess] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
-
     const navigate = useNavigate();
 
+    useEffect(() => {
+        if (!success) return;
+        const redirect = setTimeout(() => navigate('/login'), 2000);
+        return () => clearTimeout(redirect);
+    }, [navigate, success]);
+
     const handleChange = (e) => {
-        setFormData({ ...formData, [e.target.id]: e.target.value });
+        const { id, value } = e.target;
+        setFormData((previous) => ({ ...previous, [id]: value }));
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
-        setSuccess('');
 
         if (formData.password !== formData.confirmPassword) {
-            setError('Passwords do not match');
+            setError('Passwords do not match. Please enter the same password in both fields.');
             return;
         }
 
         setIsSubmitting(true);
 
         try {
-            const payload = {
-                fullName: formData.fullName,
-                studentCode: formData.studentCode,
-                email: formData.email,
-                phoneNumber: formData.phoneNumber || undefined,
-                password: formData.password,
-            };
-            await authService.studentRegister(payload);
-            setSuccess('Account activated successfully! Redirecting to login...');
-            setTimeout(() => navigate('/login'), 2000);
+            const { fullName, studentCode, email, phoneNumber, password } = formData;
+            await authService.studentRegister({
+                fullName,
+                studentCode,
+                email,
+                phoneNumber: phoneNumber || undefined,
+                password,
+            });
+            setSuccess(true);
         } catch (err) {
-            setError(err.message || 'Registration failed');
+            setError(err.message || 'We couldn’t create your account. Please try again.');
         } finally {
             setIsSubmitting(false);
         }
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
-            <div className="w-full max-w-md bg-white rounded-lg border border-gray-200 p-8">
-                <h2 className="text-2xl font-bold text-gray-900 text-center mb-6">
-                    Student Registration
-                </h2>
+        <section className="auth-content auth-content--register" aria-labelledby="register-title">
+            <h1 className="auth-title" id="register-title">Create your account</h1>
+            <p className="auth-intro">Register as a student to book campus workshops.</p>
 
-                {error && (
-                    <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded text-sm">
-                        {error}
-                    </div>
-                )}
+            {error && <p className="auth-feedback" role="alert">{error}</p>}
+            {success && (
+                <p className="auth-feedback auth-feedback--success" role="status">
+                    Account activated. Taking you to sign in…
+                </p>
+            )}
 
-                {success && (
-                    <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded text-sm">
-                        {success}
-                    </div>
-                )}
-
-                <form onSubmit={handleSubmit} className="space-y-4">
+            <form className="auth-form" onSubmit={handleSubmit} aria-busy={isSubmitting}>
+                <div className="auth-pair">
                     <div>
-                        <label htmlFor="fullName" className="block text-sm font-medium text-gray-700">
-                            Full Name
-                        </label>
-                        <input
-                            id="fullName"
-                            type="text"
-                            value={formData.fullName}
-                            onChange={handleChange}
-                            required
-                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm 
-                                       focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                        />
+                        <label htmlFor="fullName">Full name</label>
+                        <input id="fullName" name="fullName" autoComplete="name"
+                            value={formData.fullName} onChange={handleChange} required />
                     </div>
-
                     <div>
-                        <label htmlFor="studentCode" className="block text-sm font-medium text-gray-700">
-                            Student Code
-                        </label>
-                        <input
-                            id="studentCode"
-                            type="text"
-                            value={formData.studentCode}
-                            onChange={handleChange}
-                            required
-                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm 
-                                       focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                        />
+                        <label htmlFor="studentCode">Student code</label>
+                        <input id="studentCode" name="studentCode"
+                            value={formData.studentCode} onChange={handleChange} required />
                     </div>
+                </div>
 
+                <div className="auth-pair">
                     <div>
-                        <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                            Email
-                        </label>
-                        <input
-                            id="email"
-                            type="email"
-                            value={formData.email}
-                            onChange={handleChange}
-                            required
-                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm 
-                                       focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                        />
+                        <label htmlFor="email">Email address</label>
+                        <input id="email" name="email" type="email" autoComplete="email" autoCapitalize="none"
+                            value={formData.email} onChange={handleChange} required />
                     </div>
-
                     <div>
-                        <label htmlFor="phoneNumber" className="block text-sm font-medium text-gray-700">
-                            Phone Number <span className="text-gray-400">(optional)</span>
-                        </label>
-                        <input
-                            id="phoneNumber"
-                            type="text"
-                            value={formData.phoneNumber}
-                            onChange={handleChange}
-                            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm 
-                                       focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                        />
+                        <label htmlFor="phoneNumber">Phone <span>(optional)</span></label>
+                        <input id="phoneNumber" name="phoneNumber" type="tel" autoComplete="tel"
+                            value={formData.phoneNumber} onChange={handleChange} />
                     </div>
+                </div>
 
+                <div className="auth-pair">
                     <PasswordField
                         id="password"
                         label="Password"
                         value={formData.password}
                         onChange={handleChange}
+                        describedBy="password-hint"
                         required
                         minLength={6}
                         autoComplete="new-password"
                     />
-
                     <PasswordField
                         id="confirmPassword"
-                        label="Confirm Password"
+                        label="Confirm password"
                         value={formData.confirmPassword}
                         onChange={handleChange}
                         required
                         minLength={6}
                         autoComplete="new-password"
                     />
+                </div>
+                <p className="auth-note" id="password-hint">Use at least 6 characters.</p>
 
-                    <button
-                        type="submit"
-                        disabled={isSubmitting}
-                        className="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-medium 
-                                   rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 
-                                   focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {isSubmitting ? 'Registering...' : 'Register'}
-                    </button>
-                </form>
+                <button type="submit" className="auth-submit" disabled={isSubmitting || success}>
+                    {isSubmitting && <span className="auth-submit-spinner" aria-hidden="true" />}
+                    {isSubmitting ? 'Creating account…' : 'Create account'}
+                    {!isSubmitting && !success && <span aria-hidden="true">→</span>}
+                </button>
+            </form>
 
-                <p className="mt-6 text-center text-sm text-gray-600">
-                    Already have an account?{' '}
-                    <Link to="/login" className="text-indigo-600 hover:text-indigo-500 font-medium">
-                        Sign in
-                    </Link>
-                </p>
-            </div>
-        </div>
+            <p className="auth-switch">
+                Already have an account? <Link to="/login">Sign in</Link>
+            </p>
+        </section>
     );
 };
 
