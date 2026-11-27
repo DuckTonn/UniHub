@@ -1,19 +1,16 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import workshopService from '../services/workshopService';
 import workshopRegistrationService from '../services/workshopRegistrationService';
 import PaymentModal from '../components/workshops/PaymentModal';
-import RegistrationSuccessModal from '../components/workshops/RegistrationSuccessModal';
+import WorkshopTicketDialog from '../components/workshops/WorkshopTicketDialog';
+import WorkshopDetailsDialog from '../components/workshops/WorkshopDetailsDialog';
 import PaginationControl from '../components/common/PaginationControl';
 
 import WorkshopCard from '../components/workshops/WorkshopCard';
-import { formatDateTime, formatDescription, formatPrice, isRegistrationClosed, isRegistrationStarted } from '../utils/workshopDisplay';
+import { isRegistrationClosed } from '../utils/workshopDisplay';
 import './studentExperience.css';
-
-const getSeatMapAlt = (workshop) => {
-    const roomName = workshop?.roomName ? ` for ${workshop.roomName}` : '';
-    return `Seat map${roomName}`;
-};
+import './workshopTickets.css';
 
 const isRegistrationOpen = (w) => {
     try {
@@ -31,8 +28,8 @@ const getRegisterButtonLabel = (workshop, isRegistering) => {
     if (isRegistering) return 'Processing...';
     if (workshop?.userRegistrationStatus === 'SUCCESS') return 'Registered';
     if (workshop?.userRegistrationStatus === 'PENDING') return 'Payment pending';
-    if (!isRegistrationStarted(workshop)) return 'Registration Not Started';
     if (isRegistrationClosed(workshop)) return 'Registration closed';
+    if (!isRegistrationOpen(workshop)) return 'Registration not open';
     if (workshop?.remainingSlots === 0) return 'Full';
     return 'Register';
 };
@@ -41,32 +38,17 @@ const PAGE_SIZE = 12;
 
 const WorkshopListPage = () => {
     const requestedWorkshopId = useLocation().state?.workshopId;
-    const detailDialog = useRef(null);
     const [workshops, setWorkshops] = useState([]);
     const [loading, setLoading] = useState(true);
     const [loadAttempt, setLoadAttempt] = useState(0);
     const [error, setError] = useState('');
     const [selectedWorkshop, setSelectedWorkshop] = useState(null);
-    const [showSeatMap, setShowSeatMap] = useState(false);
-    const [seatMapLoading, setSeatMapLoading] = useState(false);
-    const [seatMapError, setSeatMapError] = useState('');
-
-    const resetSeatMapState = () => {
-        setShowSeatMap(false);
-        setSeatMapLoading(false);
-        setSeatMapError('');
-    };
-
     const handleSelectWorkshop = (workshop) => {
-        resetSeatMapState();
         setRegistrationError('');
         setSelectedWorkshop(workshop);
     };
 
-    const handleCloseWorkshop = () => {
-        resetSeatMapState();
-        setSelectedWorkshop(null);
-    };
+    const handleCloseWorkshop = () => setSelectedWorkshop(null);
     const [isRegistering, setIsRegistering] = useState(false);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -196,13 +178,6 @@ const WorkshopListPage = () => {
         setLoadAttempt((attempt) => attempt + 1);
     };
 
-    useEffect(() => {
-        const dialog = detailDialog.current;
-        if (!selectedWorkshop || !dialog) return;
-        dialog.showModal();
-        return () => dialog.close();
-    }, [selectedWorkshop]);
-
     const handlePageChange = async (page) => {
         setError('');
         try {
@@ -268,163 +243,17 @@ const WorkshopListPage = () => {
                 </div>
             </section>
 
-            {/* Workshop Detail Modal */}
             {selectedWorkshop && (
-                <dialog
-                    ref={detailDialog}
-                    className="workshop-dialog"
-                    aria-labelledby="workshop-dialog-title"
-                    onCancel={(event) => {
-                        event.preventDefault();
-                        if (!isRegistering) handleCloseWorkshop();
-                    }}
-                    onClick={(event) => {
-                        if (event.target === event.currentTarget && !isRegistering) handleCloseWorkshop();
-                    }}
-                >
-                    <div className="workshop-dialog-content">
-                        <h2 className="text-2xl font-bold" id="workshop-dialog-title" tabIndex={-1} autoFocus>{selectedWorkshop.title}</h2>
-
-                        <div className="mt-4 space-y-3">
-                            <div className="flex items-start gap-2">
-                                <span className="text-sm font-medium text-gray-500 w-26 sm:w-36 shrink-0">Time:</span>
-                                <span className="text-sm text-gray-700 font-semibold">{formatDateTime(selectedWorkshop.startTime)}</span>
-                            </div>
-                            <div className="flex items-start gap-2">
-                                <span className="text-sm font-medium text-gray-500 w-26 sm:w-36 shrink-0">Speaker:</span>
-                                <span className="text-sm text-gray-700 font-semibold">{selectedWorkshop.speaker}</span>
-                            </div>
-                            <div className="flex items-start gap-2">
-                                <span className="text-sm font-medium text-gray-500 w-26 sm:w-36 shrink-0">Room:</span>
-                                <span className="text-sm text-gray-700">
-                                    {selectedWorkshop.roomName || 'Room TBA'}
-                                    {selectedWorkshop.roomCapacity ? ` (${selectedWorkshop.roomCapacity} seats)` : ''}
-                                </span>
-                            </div>
-                            <div className="flex items-start gap-2">
-                                <span className="text-sm font-medium text-gray-500 w-26 sm:w-36 shrink-0">Ends:</span>
-                                <span className="text-sm text-gray-700">{formatDateTime(selectedWorkshop.endTime)}</span>
-                            </div>
-                            
-                            {/* Bổ sung Registration Starts */}
-                            <div className="flex items-start gap-2 border-t border-gray-50 pt-2">
-                                <span className="text-sm font-medium text-gray-500 w-26 sm:w-36 shrink-0">Registration starts:</span>
-                                <span className="text-sm text-gray-700">{formatDateTime(selectedWorkshop.registrationStartTime)}</span>
-                            </div>
-                            
-                            <div className="flex items-start gap-2">
-                                <span className="text-sm font-medium text-gray-500 w-26 sm:w-36 shrink-0">Registration ends:</span>
-                                <span className="text-sm text-gray-700">{formatDateTime(selectedWorkshop.registrationEndTime)}</span>
-                            </div>
-                            
-                            <div className="flex items-start gap-2 border-t border-gray-50 pt-2">
-                                <span className="text-sm font-medium text-gray-500 w-26 sm:w-36 shrink-0">Price:</span>
-                                <span className={`text-sm font-bold ${
-                                    Number(selectedWorkshop.price) === 0 ? 'text-emerald-600' : 'text-amber-600'
-                                }`}>
-                                    {formatPrice(selectedWorkshop.price)}
-                                </span>
-                            </div>
-                            <div className="flex items-start gap-2">
-                                <span className="text-sm font-medium text-gray-500 w-26 sm:w-36 shrink-0">Seats:</span>
-                                <span className="text-sm text-gray-700">
-                                    {selectedWorkshop.remainingSlots} seats left
-                                </span>
-                            </div>
-                        </div>
-
-                        <div className="mt-4">
-                            <h4 className="text-sm font-medium text-gray-500 mb-1">Description:</h4>
-                            <p className="text-sm text-gray-700 whitespace-pre-wrap">{formatDescription(selectedWorkshop.description)}</p>
-                        </div>
-
-                        {/* Seat map */}
-                        <div className="mt-4 border-t border-gray-50 pt-3">
-                            <h4 className="text-sm font-medium text-gray-500 mb-2">
-                                Seat map: {!selectedWorkshop.layoutMapUrl && <span className="font-normal italic">Unavailable</span>}
-                            </h4>
-
-                            {selectedWorkshop.layoutMapUrl && (
-                                <>
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <button
-                                            onClick={() => {
-                                                setShowSeatMap((s) => !s);
-                                                if (!showSeatMap) {
-                                                    setSeatMapLoading(true);
-                                                    setSeatMapError('');
-                                                }
-                                            }}
-                                            className="rounded-md border px-3 py-1 text-sm bg-white hover:bg-gray-50"
-                                        >
-                                            {showSeatMap ? 'Hide seat map' : 'View seat map'}
-                                        </button>
-                                    </div>
-
-                                    {showSeatMap && (
-                                        <div className="w-full overflow-hidden rounded-lg border border-gray-100 bg-gray-50 p-3">
-                                            {seatMapLoading && (
-                                                <div className="mb-2 text-sm text-gray-500">Loading seat map...</div>
-                                            )}
-                                            {seatMapError && (
-                                                <div className="mb-2 text-sm text-red-600">Failed to load seat map</div>
-                                            )}
-                                            <img
-                                                src={selectedWorkshop.layoutMapUrl}
-                                                alt={getSeatMapAlt(selectedWorkshop)}
-                                                loading="lazy"
-                                                className="max-h-[55vh] w-full rounded object-contain"
-                                                onLoad={() => setSeatMapLoading(false)}
-                                                onError={() => { setSeatMapLoading(false); setSeatMapError('error'); }}
-                                            />
-                                        </div>
-                                    )}
-                                </>
-                            )}
-                        </div>
-
-                        {selectedWorkshop.userRegistrationStatus && (
-                            <div className="mt-4">
-                                <h4 className="text-sm font-medium text-gray-500 mb-1">Registration status:</h4>
-                                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                                    selectedWorkshop.userRegistrationStatus === 'SUCCESS'
-                                        ? 'bg-emerald-100 text-emerald-700'
-                                        : 'bg-amber-100 text-amber-700'
-                                }`}>
-                                    {selectedWorkshop.userRegistrationStatus === 'SUCCESS' ? 'Registered' : 'Payment pending'}
-                                </span>
-                            </div>
-                        )}
-
-                        {registrationError && (
-                            <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded text-sm">
-                                {registrationError}
-                            </div>
-                        )}
-
-                        <div className="workshop-dialog-actions">
-                            <button
-                                onClick={handleCloseWorkshop}
-                                disabled={isRegistering}
-                                className="student-button"
-                            >
-                                Close
-                            </button>
-                            <button
-                                onClick={handleRegister}
-                                disabled={
-                                    selectedWorkshop.remainingSlots === 0
-                                    || isRegistering
-                                    || !isRegistrationOpen(selectedWorkshop)
-                                    || Boolean(selectedWorkshop.userRegistrationStatus)
-                                }
-                                className="student-button student-button--primary"
-                            >
-                                {getRegisterButtonLabel(selectedWorkshop, isRegistering)}
-                            </button>
-                        </div>
-                    </div>
-                </dialog>
+                <WorkshopDetailsDialog
+                    workshop={selectedWorkshop}
+                    registerLabel={getRegisterButtonLabel(selectedWorkshop, isRegistering)}
+                    canRegister={selectedWorkshop.remainingSlots !== 0 && !isRegistering
+                        && isRegistrationOpen(selectedWorkshop) && !selectedWorkshop.userRegistrationStatus}
+                    busy={isRegistering}
+                    error={registrationError}
+                    onRegister={handleRegister}
+                    onClose={handleCloseWorkshop}
+                />
             )}
 
             {/* Payment Modal */}
@@ -456,10 +285,9 @@ const WorkshopListPage = () => {
                 />
             )}
 
-            {/* Registration Success Modal */}
-            {registrationData && (
-                <RegistrationSuccessModal
-                    isOpen={showSuccessModal}
+            {registrationData && showSuccessModal && (
+                <WorkshopTicketDialog
+                    justRegistered
                     qrCode={registrationData.qrCode}
                     workshopTitle={registrationData.title || 'Workshop'}
                     onClose={() => {
