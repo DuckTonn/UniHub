@@ -9,7 +9,7 @@ export default function UpcomingWorkshops({ upcomingWorkshops, loading, error, o
                 <Link className="student-text-link" to="/workshops">See all <span aria-hidden="true">→</span></Link>
             </div>
             {loading ? (
-                <p className="student-notice" role="status">Loading workshops…</p>
+                <p className="student-notice min-h-[20rem]" role="status">Loading workshops…</p>
             ) : error ? (
                 <div className="student-notice student-notice--error" role="alert">
                     <p>{error}</p>

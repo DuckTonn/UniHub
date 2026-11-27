@@ -1,7 +1,8 @@
-import { useContext, useEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import DOMPurify from 'dompurify';
 import { UnreadNotificationsContext } from '../context/UnreadNotificationsContext';
+import { useReadCache, useReadQuery } from '../context/readQueries';
 import notificationService from '../services/notificationService';
 import PaginationControl from '../components/common/PaginationControl';
 import { formatDateTime } from '../utils/workshopDisplay';
@@ -27,40 +28,23 @@ export default function NotificationsPage() {
     const requestedPage = Number(params.get('page') || 0);
     const page = Number.isInteger(requestedPage) && requestedPage >= 0 && requestedPage <= Math.floor(2_147_483_647 / PAGE_SIZE)
         ? requestedPage : 0;
-    const [loadAttempt, setLoadAttempt] = useState(0);
-    const requestKey = `${location.key}:${loadAttempt}`;
-    const [loaded, setLoaded] = useState(null);
-    const loading = loaded?.key !== requestKey;
-    const result = loading ? EMPTY_PAGE : loaded;
-    const loadError = result.error;
+    const cache = useReadCache();
+    const read = useCallback(() => notificationService.getMyNotifications(page, PAGE_SIZE, unreadOnly), [page, unreadOnly]);
+    const { data, loading, error, retry } = useReadQuery('notifications', [page, PAGE_SIZE, unreadOnly], read);
+    const result = data ?? EMPTY_PAGE;
+    const loadError = error && (error.message || 'We couldn’t load notifications.');
     const [openNotice, setOpenNotice] = useState(null);
-    const openId = openNotice?.key === location.key ? openNotice.id : null;
+    const openItem = openNotice?.key === location.key ? openNotice.item : null;
+    const openId = openItem?.id;
     const [readErrors, setReadErrors] = useState({});
     const readRequests = useRef(new Set());
-    const closedInbox = useRef(null);
 
     useEffect(() => {
-        let active = true;
-        notificationService.getMyNotifications(page, PAGE_SIZE, unreadOnly)
-            .then((data) => {
-                if (!active) return;
-                const content = data.content || [];
-                const totalPages = data.totalPages ?? 1;
-                if (unreadOnly && page > 0 && page >= totalPages) {
-                    const next = new URLSearchParams({ view: 'unread' });
-                    if (totalPages > 1) next.set('page', totalPages - 1);
-                    setParams(next, { replace: true });
-                    return;
-                }
-                setLoaded({ content, page: data.page ?? page, totalPages,
-                    totalElements: data.totalElements ?? content.length, key: requestKey });
-            })
-            .catch((err) => {
-                if (active) setLoaded({ ...EMPTY_PAGE, key: requestKey, error: err.message || 'We couldn’t load notifications.' });
-            });
-
-        return () => { active = false; };
-    }, [page, unreadOnly, requestKey, setParams]);
+        if (!data || openItem || !unreadOnly || page === 0 || page < data.totalPages) return;
+        const next = new URLSearchParams({ view: 'unread' });
+        if (data.totalPages > 1) next.set('page', data.totalPages - 1);
+        setParams(next, { replace: true });
+    }, [data, openItem, page, unreadOnly, setParams]);
 
     const changePage = (nextPage) => {
         setParams(unreadOnly
@@ -68,20 +52,18 @@ export default function NotificationsPage() {
             : nextPage > 0 ? { page: nextPage } : {});
     };
 
-    const reload = () => setLoadAttempt((attempt) => attempt + 1);
-
     const markRead = async (item) => {
         if (item.read === true || readRequests.current.has(item.id)) return;
         setReadErrors((errors) => ({ ...errors, [item.id]: false }));
         readRequests.current.add(item.id);
         try {
             await notificationService.markRead(item.id);
-            setLoaded((previous) => previous?.key === requestKey ? {
+            setOpenNotice((previous) => previous?.key === location.key && previous.item.id === item.id ? {
                 ...previous,
-                content: previous.content.map((entry) => entry.id === item.id ? { ...entry, read: true } : entry),
+                item: { ...item, read: true },
             } : previous);
+            cache.invalidate('notifications');
             refreshUnreadCount?.();
-            if (unreadOnly && closedInbox.current === location.key) reload();
         } catch {
             setReadErrors((errors) => ({ ...errors, [item.id]: true }));
         } finally {
@@ -89,8 +71,10 @@ export default function NotificationsPage() {
         }
     };
 
-    const unread = result.content.filter((item) => item.read !== true).length;
-    const visibleNotifications = unreadOnly ? result.content.filter((item) => !item.read || item.id === openId) : result.content;
+    const items = result.content.map((item) => item.id === openId && openItem.read ? { ...item, read: true } : item);
+    const unread = items.filter((item) => item.read !== true).length;
+    const visibleNotifications = unreadOnly ? items.filter((item) => !item.read || item.id === openId) : items;
+    if (openItem && !visibleNotifications.some((item) => item.id === openId)) visibleNotifications.unshift(openItem);
 
     return (
         <div className="student-experience" aria-label="Notifications">
@@ -118,10 +102,10 @@ export default function NotificationsPage() {
                 {loadError && (
                     <div className="student-notice student-notice--error" role="alert">
                         <p>{loadError}</p>
-                        <button type="button" className="student-text-link" onClick={reload}>Try again</button>
+                        <button type="button" className="student-text-link" onClick={retry}>Try again</button>
                     </div>
                 )}
-                {loading ? (
+                {loading && !visibleNotifications.length ? (
                     <p className="student-notice" role="status">Loading notifications…</p>
                 ) : visibleNotifications.length ? (
                     <ul className="inbox-list">
@@ -135,12 +119,9 @@ export default function NotificationsPage() {
                                             aria-expanded={expanded} aria-controls={`notice-content-${item.id}`}
                                             onClick={() => {
                                                 if (expanded) {
-                                                    closedInbox.current = location.key;
                                                     setOpenNotice(null);
-                                                    if (unreadOnly && result.content.some((entry) => entry.read)) reload();
                                                 } else {
-                                                    closedInbox.current = null;
-                                                    setOpenNotice({ id: item.id, key: location.key });
+                                                    setOpenNotice({ item, key: location.key });
                                                     markRead(item);
                                                 }
                                             }}>

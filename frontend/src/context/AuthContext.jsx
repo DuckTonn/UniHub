@@ -1,11 +1,14 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import authService from '../services/authService';
+import { createReadCache, ReadQueriesContext } from './readQueries';
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
+    const account = user ? `${user.role}:${user.id}` : null;
+    const readCache = useMemo(() => account ? createReadCache() : null, [account]);
 
     const loadCurrentUser = async () => {
         const response = await authService.getCurrentUserProfile();
@@ -84,11 +87,14 @@ export const AuthProvider = ({ children }) => {
 
     return (
         <AuthContext.Provider value={value}>
-            {!isLoading && children}
+            <ReadQueriesContext.Provider value={readCache}>
+                {!isLoading && children}
+            </ReadQueriesContext.Provider>
         </AuthContext.Provider>
     );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components -- Keep the auth provider and its hook on the existing import path.
 export const useAuth = () => {
     const context = useContext(AuthContext);
     if (!context) {

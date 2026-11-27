@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { UnreadNotificationsContext } from '../../context/UnreadNotificationsContext';
 import notificationService from '../../services/notificationService';
+import DeferredContent from '../common/DeferredContent';
 
 function NotificationLink({ count, active, onClick }) {
     const label = count == null ? 'Notifications' : `Notifications, ${count} unread`;
@@ -198,9 +199,11 @@ const Layout = () => {
                 )}
             </nav>
 
-            <main>
+            <main className="min-h-[calc(100svh-4rem)]">
                 <UnreadNotificationsContext.Provider value={refreshUnreadCount}>
-                    <Outlet />
+                    <Suspense fallback={<DeferredContent />}>
+                        <Outlet />
+                    </Suspense>
                 </UnreadNotificationsContext.Provider>
             </main>
 

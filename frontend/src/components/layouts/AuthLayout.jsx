@@ -1,4 +1,6 @@
+import { Suspense } from 'react';
 import { Link, Outlet } from 'react-router-dom';
+import DeferredContent from '../common/DeferredContent';
 import './auth.css';
 
 export default function AuthLayout() {
@@ -18,7 +20,9 @@ export default function AuthLayout() {
                     </Link>
                 </header>
                 <main className="auth-main">
-                    <Outlet />
+                    <Suspense fallback={<DeferredContent />}>
+                        <Outlet />
+                    </Suspense>
                 </main>
             </div>
         </div>

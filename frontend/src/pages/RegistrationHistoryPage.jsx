@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import workshopService from '../services/workshopService';
 import workshopRegistrationService from '../services/workshopRegistrationService';
-import PaymentModal from '../components/workshops/PaymentModal';
-import WorkshopTicketDialog from '../components/workshops/WorkshopTicketDialog';
+import { useReadCache, useReadQuery } from '../context/readQueries';
+import DeferredContent from '../components/common/DeferredContent';
 import RegistrationHistory from '../components/homeStudent/RegistrationHistory';
 import PaginationControl from '../components/common/PaginationControl';
 import { isHoldExpired, isWorkshopEnded } from '../utils/registrationDisplay';
@@ -11,26 +11,26 @@ import './studentExperience.css';
 import './workshopTickets.css';
 
 const PAGE_SIZE = 12;
+const EMPTY_PAGE = { content: [], page: 0, totalPages: 0, totalElements: 0 };
+const PaymentModal = lazy(() => import('../components/workshops/PaymentModal'));
+const WorkshopTicketDialog = lazy(() => import('../components/workshops/WorkshopTicketDialog'));
 
 export default function RegistrationHistoryPage() {
-    const [result, setResult] = useState({ content: [], page: 0, totalPages: 0, totalElements: 0 });
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
+    const [page, setPage] = useState(0);
+    const cache = useReadCache();
+    const read = useCallback(() => workshopService.getUserWorkshops(page, PAGE_SIZE), [page]);
+    const { data, loading, error: readError, retry } = useReadQuery('registrations', [page, PAGE_SIZE], read);
+    const result = data ?? EMPTY_PAGE;
+    const [actionError, setActionError] = useState('');
     const [paymentTarget, setPaymentTarget] = useState(null);
     const [ticket, setTicket] = useState(null);
     const [cancellingId, setCancellingId] = useState(null);
     const [now, setNow] = useState(Date.now);
 
-    const fetchPage = useCallback((page) => workshopService.getUserWorkshops(page, PAGE_SIZE)
-        .then((data) => setResult(data))
-        .catch(() => setError('We couldn’t load your registrations. Please try again.'))
-        .finally(() => setLoading(false)), []);
-
     useEffect(() => {
-        fetchPage(0);
         const timer = window.setInterval(() => setNow(Date.now()), 5000);
         return () => window.clearInterval(timer);
-    }, [fetchPage]);
+    }, []);
 
     const sorted = useMemo(() => [...(result.content || [])].sort((left, right) =>
         new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime()
@@ -45,19 +45,13 @@ export default function RegistrationHistoryPage() {
         return { pending, history };
     }, [sorted, now]);
 
-    const refresh = (page) => {
-        setLoading(true);
-        setError('');
-        return fetchPage(page);
-    };
-
     const openPayment = (registration) => {
         if (isHoldExpired(registration, Date.now()) || isWorkshopEnded(registration, Date.now())) {
             setNow(Date.now());
             return;
         }
         if (!registration.paymentIdempotencyKey) return;
-        setError('');
+        setActionError('');
         setPaymentTarget(registration);
     };
 
@@ -67,7 +61,7 @@ export default function RegistrationHistoryPage() {
         if (!response?.success) throw new Error(response?.message || 'Payment failed');
         if (response.qrCode) setTicket({ title: paymentTarget.title, qrCode: response.qrCode });
         setPaymentTarget(null);
-        await refresh(result.page);
+        cache.invalidate('registrations', 'workshops', 'notifications');
     };
 
     const cancel = async (registration) => {
@@ -77,13 +71,13 @@ export default function RegistrationHistoryPage() {
             return;
         }
         const { workshopId } = registration;
-        setError('');
+        setActionError('');
         setCancellingId(workshopId);
         try {
             await workshopRegistrationService.cancelRegistration(workshopId);
-            await refresh(result.page);
+            cache.invalidate('registrations', 'workshops', 'notifications');
         } catch (err) {
-            setError(err.response?.data?.message || err.message || 'Failed to cancel registration.');
+            setActionError(err.response?.data?.message || err.message || 'Failed to cancel registration.');
         } finally {
             setCancellingId(null);
         }
@@ -100,11 +94,14 @@ export default function RegistrationHistoryPage() {
             </header>
 
             <div className="student-section" aria-busy={loading}>
-                {error && <p className="student-notice student-notice--error" role="alert">{error}</p>}
+                {actionError && <p className="student-notice student-notice--error" role="alert">{actionError}</p>}
                 {loading ? (
                     <p className="student-notice" role="status">Loading registrations…</p>
-                ) : error && !result.content?.length ? (
-                    <button type="button" className="student-button" onClick={() => refresh(result.page)}>Try again</button>
+                ) : readError ? (
+                    <div className="student-notice student-notice--error" role="alert">
+                        <p>We couldn’t load your registrations. Please try again.</p>
+                        <button type="button" className="student-text-link" onClick={retry}>Try again</button>
+                    </div>
                 ) : (
                     <>
                         <RegistrationHistory pending={pending} history={history} now={now} onPay={openPayment}
@@ -113,7 +110,8 @@ export default function RegistrationHistoryPage() {
                             <PaginationControl currentPage={result.page} totalPages={result.totalPages}
                                 totalElements={result.totalElements} pageSize={PAGE_SIZE} itemLabel="registrations"
                                 onPageChange={(page) => {
-                                    refresh(page);
+                                    setActionError('');
+                                    setPage(page);
                                     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
                                     window.scrollTo({ top: 0, behavior: reduce ? 'instant' : 'smooth' });
                                 }} />
@@ -122,12 +120,14 @@ export default function RegistrationHistoryPage() {
                 )}
             </div>
 
-            {paymentTarget && (
-                <PaymentModal isOpen workshop={{ title: paymentTarget.title, price: paymentTarget.price }}
-                    idempotencyKey={paymentTarget.paymentIdempotencyKey} onClose={() => setPaymentTarget(null)}
-                    onPaymentSuccess={retryPayment} onPaymentError={(err) => setError(err?.message || 'Payment failed')} />
-            )}
-            {ticket && <WorkshopTicketDialog workshopTitle={ticket.title} qrCode={ticket.qrCode} onClose={() => setTicket(null)} />}
+            <Suspense fallback={<DeferredContent />}>
+                {paymentTarget && (
+                    <PaymentModal isOpen workshop={{ title: paymentTarget.title, price: paymentTarget.price }}
+                        idempotencyKey={paymentTarget.paymentIdempotencyKey} onClose={() => setPaymentTarget(null)}
+                        onPaymentSuccess={retryPayment} onPaymentError={(err) => setActionError(err?.message || 'Payment failed')} />
+                )}
+                {ticket && <WorkshopTicketDialog workshopTitle={ticket.title} qrCode={ticket.qrCode} onClose={() => setTicket(null)} />}
+            </Suspense>
         </div>
     );
 }

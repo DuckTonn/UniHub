@@ -1,3 +1,4 @@
+import { lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Toaster } from 'react-hot-toast';
@@ -8,17 +9,18 @@ import GuestRoute from './routes/GuestRoute';
 
 // Pages
 import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
 import UnauthorizedPage from './pages/UnauthorizedPage';
+import NotFoundPage from './pages/NotFoundPage';
 import HomeStudent from './pages/HomeStudent';
-import ProfilePage from './pages/ProfilePage';
 import WorkshopListPage from './pages/WorkshopListPage';
 import RegistrationHistoryPage from './pages/RegistrationHistoryPage';
-import Dashboard from './pages/Dashboard';
-import StatisticsPage from './pages/StatisticsPage';
-import RoomsPage from './pages/RoomsPage';
-import NotFoundPage from './pages/NotFoundPage';
 import NotificationsPage from './pages/NotificationsPage';
+
+const RegisterPage = lazy(() => import('./pages/RegisterPage'));
+const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const StatisticsPage = lazy(() => import('./pages/StatisticsPage'));
+const RoomsPage = lazy(() => import('./pages/RoomsPage'));
 
 // Auto-redirect ADMIN to /admin when visiting /
 const HomeRedirect = () => {
