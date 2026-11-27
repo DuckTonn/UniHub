@@ -125,7 +125,7 @@ test('keeps student screens within the viewport with keyboard focus and reduced 
         }
     }
     await page.getByRole('button', { name: /Workshop room updated/ }).press('Enter');
-    const message = page.getByText('Innovation Lab', { exact: true });
-    await expect(message).toBeVisible();
-    expect(await message.evaluate((element) => getComputedStyle(element.closest('.inbox-detail')).animationName)).toBe('none');
+    const inboxDetail = page.locator('.inbox-detail:not([hidden])');
+    await expect(inboxDetail.getByText('Innovation Lab', { exact: true })).toBeVisible();
+    await expect(inboxDetail).toHaveCSS('animation-name', 'none');
 });
