@@ -38,10 +38,7 @@ def online(base):
     assert p95 < 2.5, f"Catalog p95 exceeded 2.5 s: {p95:.3f}s"
     print(f"Catalog load: 16 responses, concurrency 8, p95 {p95:.3f}s")
 
-    assert wait_for_scrapes() == {"ai", "backend", "gateway"}
-    for metric in ("unihub_ai_jobs_active", "unihub_operations_last_refresh_seconds",
-                   "unihub_ai_summary_seconds_count", "spring_cloud_gateway_requests_seconds_count"):
-        assert prometheus(metric), f"Missing metric: {metric}"
+    wait_for_metrics()
     print("Private targets and operational metrics are available.")
 
 
@@ -59,14 +56,21 @@ def prometheus(query):
         return json.load(response)["data"]["result"]
 
 
-def wait_for_scrapes():
+def wait_for_metrics():
+    expected = {"ai", "backend", "gateway"}
+    metrics = ("unihub_ai_jobs_active", "unihub_operations_last_refresh_seconds",
+               "unihub_ai_summary_seconds_count", "spring_cloud_gateway_requests_seconds_count")
+    # Targets may be up before the first scrape after a smoke request creates a metric series.
     deadline = time.monotonic() + 45
-    while time.monotonic() < deadline:
+    while True:
         healthy = {sample["metric"]["job"] for sample in prometheus("up") if sample["value"][1] == "1"}
-        if healthy == {"ai", "backend", "gateway"}:
-            return healthy
-        time.sleep(2)
-    raise AssertionError("Prometheus did not scrape all three services")
+        missing = [metric for metric in metrics if not prometheus(metric)]
+        if healthy == expected and not missing:
+            return
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AssertionError(f"Prometheus healthy targets: {sorted(healthy)}. Missing metrics: {missing}")
+        time.sleep(min(2, remaining))
 
 
 def recovered(base):
