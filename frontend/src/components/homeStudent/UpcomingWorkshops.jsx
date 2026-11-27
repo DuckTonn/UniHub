@@ -6,7 +6,7 @@ export default function UpcomingWorkshops({ upcomingWorkshops, loading, error, o
         <section className="student-section" aria-labelledby="upcoming-title" aria-busy={loading}>
             <div className="student-section-heading">
                 <h2 id="upcoming-title">Upcoming workshops</h2>
-                <Link className="student-text-link" to="/workshops">See all <span aria-hidden="true">↗</span></Link>
+                <Link className="student-text-link" to="/workshops">See all <span aria-hidden="true">→</span></Link>
             </div>
             {loading ? (
                 <p className="student-notice" role="status">Loading workshops…</p>

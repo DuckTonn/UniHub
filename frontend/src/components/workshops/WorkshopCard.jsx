@@ -11,7 +11,7 @@ export default function WorkshopCard({ workshop, index, onOpen }) {
         : workshop.remainingSlots === 0 ? 'Full'
             : !isRegistrationStarted(workshop) ? 'Registration not started'
                 : workshop.remainingSlots == null ? null : `${workshop.remainingSlots} seats left`;
-    const action = <>View details <span aria-hidden="true">↗</span></>;
+    const action = <>View details <span aria-hidden="true">→</span></>;
     const actionLabel = `View details for ${workshop.title}`;
 
     return (

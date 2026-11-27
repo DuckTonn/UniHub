@@ -10,7 +10,7 @@ export default function UserInfoCard({ user }) {
                     <p>{[user?.email, user?.studentCode].filter(Boolean).join(' · ')}</p>
                 )}
             </div>
-            <Link className="student-button" to="/profile">View profile <span aria-hidden="true">↗</span></Link>
+            <Link className="student-button" to="/profile">View profile <span aria-hidden="true">→</span></Link>
         </section>
     );
 }

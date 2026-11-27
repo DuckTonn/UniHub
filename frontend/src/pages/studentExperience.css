@@ -33,7 +33,7 @@
     inset: 0;
     background:
         linear-gradient(90deg, #22143f 6%, rgb(40 24 72 / 92%) 37%, rgb(35 24 65 / 13%) 78%),
-        url('../assets/workshop-sign-in.webp') right 40% / 64% auto no-repeat;
+        url('../assets/workshop-sign-in.webp') right 33% / 64% auto no-repeat;
     content: '';
 }
 

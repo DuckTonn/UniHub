@@ -222,7 +222,7 @@ const WorkshopListPage = () => {
                     <p>Find a session that fits your schedule and reserve your seat.</p>
                 </div>
                 <Link to="/registration-history" className="student-button">
-                    My registrations <span aria-hidden="true">↗</span>
+                    My registrations <span aria-hidden="true">→</span>
                 </Link>
             </header>
 
