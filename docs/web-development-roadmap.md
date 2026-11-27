@@ -8,6 +8,21 @@ Lộ trình tiếp tục từ cổng API Spring, React/Vite và các màn hình 
 - Tách màu, khoảng cách và kiểu focus đang lặp lại thành biến CSS dùng chung. Kiểm tra ở chiều rộng 320, 390 và 1280 px, bằng bàn phím và với chế độ giảm chuyển động.
 - Điều kiện nghiệm thu là CI chạy các luồng chính, trạng thái focus rõ ràng và các trang không cuộn ngang ở 320 px.
 
+### Chạy bộ kiểm thử mốc 1
+
+Dùng Node.js 22.19 trở lên và npm 11.6.3 trở lên, theo yêu cầu của frontend.
+
+```sh
+cd frontend
+npm ci
+npx playwright install chromium
+npm run test:e2e
+```
+
+Playwright chạy bản build React ở cổng 4178 và tạo lại dữ liệu API riêng cho từng bài kiểm thử. Ba cấu hình Chromium kiểm tra chiều rộng 320, 390 và 1280 px. Job `frontend-e2e` lưu báo cáo HTML và trace khi thất bại. Job `compose` kiểm tra tiếp API thật qua gateway, PostgreSQL và RabbitMQ.
+
+Màu, khoảng cách và viền focus dùng chung đặt trong `frontend/src/index.css`. Dùng các biến `--ui-*` khi bổ sung màn hình sinh viên. Giữ hiệu ứng chuyển động tùy thuộc vào `prefers-reduced-motion`.
+
 ## 2. Thêm công cụ tìm workshop và quản lý hộp thư
 
 - Bổ sung tìm theo tên hoặc diễn giả, lọc theo ngày, chỗ còn và mức phí ở API danh sách. Đồng bộ bộ lọc vào URL và thực hiện truy vấn trên toàn bộ danh sách đã phân trang.

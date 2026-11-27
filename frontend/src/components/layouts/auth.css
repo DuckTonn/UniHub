@@ -1,8 +1,4 @@
 .auth-layout {
-    --auth-ink: #201b30;
-    --auth-muted: #625d72;
-    --auth-accent: #5635ce;
-    --auth-accent-hover: #4426ac;
     display: grid;
     grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
     min-height: 100svh;
@@ -10,7 +6,7 @@
     background:
         radial-gradient(ellipse at 100% 0, #eee8ff 0, transparent 30rem),
         #fcfbff;
-    color: var(--auth-ink);
+    color: var(--ui-color-ink);
 }
 
 .auth-cover {
@@ -76,7 +72,7 @@
     align-items: center;
     gap: 11px;
     width: fit-content;
-    color: var(--auth-ink);
+    color: var(--ui-color-ink);
     font-size: 1.35rem;
     font-weight: 780;
     letter-spacing: -0.045em;
@@ -89,7 +85,7 @@
     height: 38px;
     place-items: center;
     border-radius: 12px;
-    background: linear-gradient(145deg, #7755ee, var(--auth-accent));
+    background: linear-gradient(145deg, #7755ee, var(--ui-color-brand));
     color: #fff;
     font-size: 1.17rem;
     letter-spacing: 0;
@@ -123,14 +119,14 @@
 
 .auth-intro {
     margin-bottom: 30px;
-    color: var(--auth-muted);
+    color: var(--ui-color-muted);
     font-size: 1rem;
     line-height: 1.6;
 }
 
 .auth-form {
     display: grid;
-    gap: 16px;
+    gap: var(--ui-space-4);
 }
 
 .auth-pair {
@@ -142,14 +138,14 @@
 .auth-form label {
     display: block;
     margin-bottom: 6px;
-    color: var(--auth-ink);
+    color: var(--ui-color-ink);
     font-size: 0.9rem;
     font-weight: 650;
 }
 
 .auth-form label span,
 .auth-note {
-    color: var(--auth-muted);
+    color: var(--ui-color-muted);
     font-size: 0.8rem;
     font-weight: 400;
 }
@@ -163,7 +159,7 @@
     border-radius: 10px;
     outline: none;
     background-color: #fff;
-    color: var(--auth-ink);
+    color: var(--ui-color-ink);
     font: inherit;
     box-shadow: none;
 }
@@ -173,8 +169,8 @@
 }
 
 .auth-form input:focus {
-    border-color: var(--auth-accent);
-    outline: 2px solid var(--auth-accent);
+    border-color: var(--ui-color-brand);
+    outline: var(--ui-focus-width) solid var(--ui-focus-color);
     outline-offset: 1px;
     box-shadow: 0 0 0 6px rgb(86 53 206 / 11%);
 }
@@ -190,13 +186,13 @@
     height: 44px;
     place-items: center;
     border-radius: 8px;
-    color: var(--auth-muted);
+    color: var(--ui-color-muted);
     cursor: pointer;
 }
 
 .auth-form .auth-password-toggle:hover {
     background: #f2edff;
-    color: var(--auth-accent);
+    color: var(--ui-color-brand);
 }
 
 .auth-submit {
@@ -217,7 +213,7 @@
 }
 
 .auth-submit:hover:not(:disabled) {
-    background: linear-gradient(115deg, #5635ce, var(--auth-accent-hover));
+    background: linear-gradient(115deg, var(--ui-color-brand), var(--ui-color-brand-hover));
     box-shadow: 0 8px 19px rgb(86 53 206 / 28%);
 }
 
@@ -234,16 +230,11 @@
     border-radius: 50%;
 }
 
-.auth-layout :is(a, button):focus-visible {
-    outline: 2px solid var(--auth-accent);
-    outline-offset: 3px;
-}
-
 .auth-switch {
     margin-top: 26px;
     padding-top: 21px;
     border-top: 1px solid #e5e0ef;
-    color: var(--auth-muted);
+    color: var(--ui-color-muted);
     font-size: 0.9rem;
     text-align: center;
 }
@@ -252,7 +243,7 @@
     display: inline-block;
     padding: 6px 2px;
     border-radius: 4px;
-    color: var(--auth-accent);
+    color: var(--ui-color-brand);
     font-weight: 700;
     text-decoration: underline;
     text-underline-offset: 3px;
@@ -334,7 +325,7 @@
 @media (max-width: 460px) {
     .auth-pair {
         grid-template-columns: minmax(0, 1fr);
-        gap: 16px;
+        gap: var(--ui-space-4);
     }
 
     .auth-main {

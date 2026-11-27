@@ -4,19 +4,19 @@
 
 .registration-grid {
     display: grid;
-    gap: 1rem;
+    gap: var(--ui-space-4);
 }
 
 .registration-card {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: var(--ui-space-4);
     min-width: 0;
-    padding: clamp(1rem, 2.5vw, 1.5rem);
-    border: 1px solid var(--student-line);
+    padding: clamp(var(--ui-space-4), 2.5vw, 1.5rem);
+    border: 1px solid var(--ui-color-border);
     border-top: 3px solid var(--ticket-accent, #b5a7c6);
     border-radius: 1.15rem;
-    background: #fff;
+    background: var(--ui-color-surface);
     box-shadow: 0 3px 12px rgb(38 22 71 / 5%);
     overflow-wrap: anywhere;
 }
@@ -59,7 +59,7 @@
 .registration-note,
 .registration-ticket-row span,
 .ticket-qr-note {
-    color: var(--student-muted);
+    color: var(--ui-color-muted);
     font-size: 0.84rem;
 }
 
@@ -134,7 +134,7 @@
 
 .workshop-detail-facts {
     padding: 0.85rem;
-    border: 1px solid var(--student-line);
+    border: 1px solid var(--ui-color-border);
     border-radius: 0.85rem;
     background: #faf7ff;
 }
@@ -143,11 +143,11 @@
     display: grid;
     justify-items: start;
     gap: 0.45rem;
-    color: var(--student-muted);
+    color: var(--ui-color-muted);
 }
 
 .workshop-detail-section h3 {
-    color: var(--student-ink);
+    color: var(--ui-color-ink);
     font-weight: 750;
 }
 
@@ -155,7 +155,7 @@
 
 .workshop-detail-map {
     padding: 0.65rem;
-    border: 1px solid var(--student-line);
+    border: 1px solid var(--ui-color-border);
     border-radius: 0.75rem;
     background: #faf7ff;
 }
@@ -173,8 +173,8 @@
     justify-content: end;
     gap: 0.65rem;
     padding: 0.85rem clamp(1rem, 4vw, 1.75rem);
-    border-top: 1px solid var(--student-line);
-    background: #fff;
+    border-top: 1px solid var(--ui-color-border);
+    background: var(--ui-color-surface);
 }
 
 .ticket-dialog {
@@ -196,9 +196,9 @@
     width: min(100%, 17.5rem, 53dvh);
     margin-top: 0.35rem;
     overflow: hidden;
-    border: 1px solid var(--student-line);
+    border: 1px solid var(--ui-color-border);
     border-radius: 0.9rem;
-    background: #fff;
+    background: var(--ui-color-surface);
     box-shadow: 0 6px 20px rgb(38 22 71 / 9%);
 }
 
