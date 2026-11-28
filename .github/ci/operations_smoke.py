@@ -92,6 +92,7 @@ def production(base, workshop, student, env_file):
                if line.startswith("JWT_ACCESS_SECRET="))
     token = jwt(key, student, "STUDENT")
     request(base, "/api/v1/payments/process", 403, method="POST", data={"amount": 1})
+    request(base, "/api/v1/payment-webhooks/stripe", 403, method="POST", data={})
     path = f"/api/v1/workshops/{int(workshop)}"
     body, _ = request(base, f"{path}/register", 202, token=token, method="POST")
     request(base, f"{path}/pay", 503, token=token, method="POST",

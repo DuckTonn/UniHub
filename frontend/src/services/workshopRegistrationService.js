@@ -26,6 +26,13 @@ const workshopRegistrationService = {
         },
       }
     );
+    if (response?.checkoutStatus === 'OPEN') {
+      const target = new URL(response.checkoutUrl);
+      if (target.origin !== 'https://checkout.stripe.com' || target.username || target.password) {
+        throw new Error('Sandbox checkout address is invalid.');
+      }
+      window.location.assign(target.href);
+    }
     return response;
   },
 

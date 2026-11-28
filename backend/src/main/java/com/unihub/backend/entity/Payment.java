@@ -33,4 +33,8 @@ public class Payment {
 
     @Column(name = "failure_reason")
     private String failureReason;
+
+    @Builder.Default
+    @Column(nullable = false, length = 20)
+    private String provider = "MOCK";
 }

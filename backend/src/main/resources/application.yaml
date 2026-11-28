@@ -76,6 +76,10 @@ app:
     workshop-id: ${SANDBOX_REFUNDS_WORKSHOP_ID:0}
   payment-gateway:
     provider: ${PAYMENT_PROVIDER:MOCK}
+    stripe:
+      checkout-enabled: ${STRIPE_CHECKOUT_ENABLED:false}
+      api-key: ${STRIPE_TEST_API_KEY:}
+      webhook-secret: ${STRIPE_TEST_WEBHOOK_SECRET:}
     circuit-breaker:
       failure-threshold: ${CB_THRESHOLD:3}
       open-duration-seconds: ${CB_DURATION:30}

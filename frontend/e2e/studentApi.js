@@ -100,6 +100,9 @@ export const test = base.extend({
                 const key = request.headers()['idempotency-key'];
                 calls.payments.push(key);
                 if (key !== 'e2e-hold-2') return reply({ message: 'Expected the pending booking key.' }, 400);
+                if (calls.hostedCheckout) return reply({
+                    success: false, checkoutStatus: 'OPEN', checkoutUrl: 'https://checkout.stripe.com/c/pay/cs_test_fixture',
+                }, 202);
                 const qrCode = 'QR-E2E-PAID-DEMO';
                 workshops[1].userRegistrationStatus = 'SUCCESS';
                 Object.assign(registrations[0], { status: 'SUCCESS', qrCode });
@@ -117,6 +120,9 @@ export const test = base.extend({
             return reply({ message: `Unexpected fixture API request ${method} ${path}` }, 404);
         });
 
+        calls.verifyHostedPayment = () => {
+            Object.assign(registrations[0], { status: 'SUCCESS', qrCode: 'QR-E2E-HOSTED' });
+        };
         await provide(calls);
     },
 });

@@ -115,6 +115,12 @@ public class RegistrationService {
 
     @Transactional
     public PaymentAttempt beginPayment(Long workshopId, Long userId, String idempotencyKey, boolean providerAvailable) {
+        return beginPayment(workshopId, userId, idempotencyKey, providerAvailable, "MOCK");
+    }
+
+    @Transactional
+    public PaymentAttempt beginPayment(Long workshopId, Long userId, String idempotencyKey, boolean providerAvailable,
+                                       String provider) {
         Workshop workshop = lockWorkshop(workshopId);
         Payment payment = paymentRepository.findByIdempotencyKey(idempotencyKey)
                 .filter(p -> workshopId.equals(p.getRegistration().getWorkshop().getId())
@@ -124,6 +130,9 @@ public class RegistrationService {
 
         if (List.of("COMPLETED", "FAILED").contains(payment.getStatus())) {
             return new PaymentAttempt(payment.getId(), idempotencyKey, 0, false, storedPaymentResult(payment));
+        }
+        if ("PROCESSING".equals(payment.getStatus()) && !provider.equals(payment.getProvider())) {
+            throw new ConflictException("Payment is awaiting reconciliation with its original provider");
         }
         if (!providerAvailable) {
             throw new PaymentGatewayUnavailableException("Payment gateway unavailable");
@@ -141,6 +150,7 @@ public class RegistrationService {
                 throw new ConflictException("Registration no longer has an active seat hold");
             }
             payment.setStatus("PROCESSING");
+            payment.setProvider(provider);
             paymentRepository.save(payment);
         }
         return new PaymentAttempt(payment.getId(), idempotencyKey, payment.getAmount(), expired, null);
@@ -149,13 +159,18 @@ public class RegistrationService {
     @Transactional(readOnly = true)
     public Optional<PaymentAttempt> reconciliationAttempt(Long paymentId) {
         return paymentRepository.findById(paymentId)
-                .filter(p -> "PROCESSING".equals(p.getStatus()))
+                .filter(p -> "PROCESSING".equals(p.getStatus()) && "MOCK".equals(p.getProvider()))
                 .map(p -> new PaymentAttempt(p.getId(), p.getIdempotencyKey(), p.getAmount(),
                         !"PENDING".equals(p.getRegistration().getStatus()) || holdExpired(p.getRegistration()), null));
     }
 
     @Transactional
     public PaymentResultResponse settlePayment(Long paymentId, PaymentGatewayResult result) {
+        return settlePayment(paymentId, result, false);
+    }
+
+    @Transactional
+    public PaymentResultResponse settlePayment(Long paymentId, PaymentGatewayResult result, boolean requireActiveHold) {
         Long workshopId = paymentRepository.findWorkshopId(paymentId)
                 .orElseThrow(() -> new ResourceNotFoundException("Payment record not found"));
         Workshop workshop = lockWorkshop(workshopId);
@@ -167,9 +182,13 @@ public class RegistrationService {
         Registration registration = payment.getRegistration();
         if (result.isSuccess()) {
             payment.setTransactionId(result.getTransactionId());
-            if ("CANCELLED".equals(workshop.getStatus()) || !"PENDING".equals(registration.getStatus())) {
+            if ("CANCELLED".equals(workshop.getStatus()) || !"PENDING".equals(registration.getStatus())
+                    || (requireActiveHold && holdExpired(registration))) {
                 payment.setStatus("REFUND_REQUIRED");
                 paymentRepository.save(payment);
+                if ("PENDING".equals(registration.getStatus())) {
+                    cancelHold(workshop, registration, Optional.empty());
+                }
                 return storedPaymentResult(payment);
             }
             payment.setStatus("COMPLETED");
@@ -192,6 +211,18 @@ public class RegistrationService {
             syncAvailability(workshop);
         }
         return storedPaymentResult(payment);
+    }
+
+    @Transactional
+    public void releaseExpiredStripeHold(Long paymentId) {
+        var workshopId = paymentRepository.findWorkshopId(paymentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Payment record not found"));
+        var workshop = lockWorkshop(workshopId);
+        paymentRepository.findById(paymentId)
+                .filter(p -> "STRIPE_SANDBOX".equals(p.getProvider()) && "PROCESSING".equals(p.getStatus()))
+                .map(Payment::getRegistration)
+                .filter(r -> "PENDING".equals(r.getStatus()) && holdExpired(r))
+                .ifPresent(r -> cancelHold(workshop, r, Optional.empty()));
     }
 
     private PaymentResultResponse storedPaymentResult(Payment payment) {

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import workshopService from '../services/workshopService';
 import workshopRegistrationService from '../services/workshopRegistrationService';
 import { useReadCache, useReadQuery } from '../context/readQueries';
@@ -17,6 +17,8 @@ const WorkshopTicketDialog = lazy(() => import('../components/workshops/Workshop
 
 export default function RegistrationHistoryPage() {
     const [page, setPage] = useState(0);
+    const [searchParams] = useSearchParams();
+    const checkoutReturn = searchParams.get('checkout');
     const cache = useReadCache();
     const read = useCallback(() => workshopService.getUserWorkshops(page, PAGE_SIZE), [page]);
     const { data, loading, error: readError, retry } = useReadQuery('registrations', [page, PAGE_SIZE], read);
@@ -31,6 +33,16 @@ export default function RegistrationHistoryPage() {
         const timer = window.setInterval(() => setNow(Date.now()), 5000);
         return () => window.clearInterval(timer);
     }, []);
+
+    useEffect(() => {
+        if (checkoutReturn !== 'return') return undefined;
+        let refreshes = 0;
+        const check = window.setInterval(() => {
+            retry();
+            if (++refreshes === 5) window.clearInterval(check);
+        }, 4000);
+        return () => window.clearInterval(check);
+    }, [checkoutReturn, retry]);
 
     const sorted = useMemo(() => [...(result.content || [])].sort((left, right) =>
         new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime()
@@ -58,6 +70,14 @@ export default function RegistrationHistoryPage() {
     const retryPayment = async () => {
         if (!paymentTarget) return;
         const response = await workshopRegistrationService.processPayment(paymentTarget.workshopId, paymentTarget.paymentIdempotencyKey);
+        if (response?.checkoutStatus === 'OPEN') return;
+        if (response?.checkoutStatus) {
+            setPaymentTarget(null);
+            setActionError(response.checkoutStatus === 'EXPIRED' ? 'The seat hold has expired.'
+                : 'The payment is awaiting verification. Check your registration status here.');
+            cache.invalidate('registrations', 'workshops');
+            return;
+        }
         if (!response?.success) throw new Error(response?.message || 'Payment failed');
         if (response.qrCode) setTicket({ title: paymentTarget.title, qrCode: response.qrCode });
         setPaymentTarget(null);
@@ -94,6 +114,14 @@ export default function RegistrationHistoryPage() {
             </header>
 
             <div className="student-section" aria-busy={loading}>
+                {['return', 'cancelled'].includes(checkoutReturn) && (
+                    <div className="student-notice" role="status">
+                        <p>{checkoutReturn === 'return'
+                            ? 'Check the registration below for your verified payment result and QR ticket.'
+                            : 'You left sandbox checkout. You can resume payment while the seat hold is active.'}</p>
+                        <button type="button" className="student-text-link" onClick={retry}>Refresh registration status</button>
+                    </div>
+                )}
                 {actionError && <p className="student-notice student-notice--error" role="alert">{actionError}</p>}
                 {loading ? (
                     <p className="student-notice" role="status">Loading registrations…</p>
@@ -123,7 +151,7 @@ export default function RegistrationHistoryPage() {
             <Suspense fallback={<DeferredContent />}>
                 {paymentTarget && (
                     <PaymentModal isOpen workshop={{ title: paymentTarget.title, price: paymentTarget.price }}
-                        idempotencyKey={paymentTarget.paymentIdempotencyKey} onClose={() => setPaymentTarget(null)}
+                        onClose={() => setPaymentTarget(null)}
                         onPaymentSuccess={retryPayment} onPaymentError={(err) => setActionError(err?.message || 'Payment failed')} />
                 )}
                 {ticket && <WorkshopTicketDialog workshopTitle={ticket.title} qrCode={ticket.qrCode} onClose={() => setTicket(null)} />}

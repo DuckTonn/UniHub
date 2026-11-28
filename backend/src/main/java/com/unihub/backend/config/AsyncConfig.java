@@ -1,6 +1,7 @@
 package com.unihub.backend.config;
 
 import org.springframework.context.annotation.Bean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -16,6 +17,14 @@ public class AsyncConfig {
 	public ThreadPoolTaskScheduler aiDocumentScheduler() {
 		ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
 		scheduler.setThreadNamePrefix("ai-document-");
+		return scheduler;
+	}
+
+	@Bean(defaultCandidate = false)
+	@ConditionalOnProperty(name = "app.payment-gateway.provider", havingValue = "STRIPE_SANDBOX")
+	public ThreadPoolTaskScheduler stripeCheckoutScheduler() {
+		var scheduler = new ThreadPoolTaskScheduler();
+		scheduler.setThreadNamePrefix("stripe-checkout-");
 		return scheduler;
 	}
 

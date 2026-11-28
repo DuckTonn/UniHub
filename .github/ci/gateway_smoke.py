@@ -68,6 +68,7 @@ def main(base, env_file, student_id, admin_id):
     assert len(json.loads(body)["content"]) <= 1
 
     request(base, "/api/v1/admin/stats", 403)
+    request(base, "/api/v1/payment-webhooks/stripe", 403, method="POST", data={})
     # The backend's existing exception handler maps method-level access denial to 400.
     body, _ = request(base, "/api/v1/admin/stats", 400, token=student)
     assert json.loads(body)["message"] == "Access Denied"

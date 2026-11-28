@@ -9,6 +9,7 @@ import com.unihub.backend.dto.WorkshopResponse;
 import com.unihub.backend.dto.WorkshopFilters;
 import com.unihub.backend.service.PaymentService;
 import com.unihub.backend.service.RegistrationService;
+import com.unihub.backend.service.StripeCheckoutService;
 import com.unihub.backend.service.WorkshopService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/v1/workshops")
@@ -36,6 +38,7 @@ public class WorkshopController {
     private final RegistrationService registrationService;
     private final WorkshopService workshopService;
     private final PaymentService paymentService;
+    private final Optional<StripeCheckoutService> stripeCheckout;
     private final com.unihub.backend.service.CheckinService checkinService;
 
     @GetMapping
@@ -139,6 +142,7 @@ public class WorkshopController {
     @SecurityRequirement(name = com.unihub.backend.config.OpenApiConfig.BEARER_AUTH_SCHEME)
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "Payment processed"),
+        @ApiResponse(responseCode = "202", description = "Sandbox checkout created or awaiting reconciliation"),
         @ApiResponse(responseCode = "400", description = "Invalid payment request",
             content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
         @ApiResponse(responseCode = "401", description = "Unauthorized",
@@ -156,8 +160,10 @@ public class WorkshopController {
         }
         Long userId = ((Number) authentication.getPrincipal()).longValue();
 
-        PaymentResultResponse res = paymentService.pay(id, userId, idempotencyKey);
-        return ResponseEntity.ok(res);
+        PaymentResultResponse res = stripeCheckout.isPresent()
+                ? stripeCheckout.get().checkout(id, userId, idempotencyKey)
+                : paymentService.pay(id, userId, idempotencyKey);
+        return res.getCheckoutStatus() == null ? ResponseEntity.ok(res) : ResponseEntity.accepted().body(res);
     }
 
     @PostMapping("/{id}/cancel-registration")
