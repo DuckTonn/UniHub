@@ -11,6 +11,9 @@ const statuses = { NEEDS_REVIEW: 'Needs review', ALL: 'All transactions', PROCES
     FAILED: 'Failed', REFUND_REQUIRED: 'Refund required', COMPLETED: 'Completed', CANCELLED: 'Cancelled' };
 const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' });
 const refundStatuses = { PENDING: 'Queued', PROCESSING: 'Processing', SUCCEEDED: 'Confirmed', FAILED: 'Failed' };
+const checkoutIssues = { PROVIDER_MISMATCH: 'Checkout details differ from the expected payment. Review in Stripe.',
+    SESSION_UNKNOWN: 'The checkout session could not be confirmed. Review in Stripe.',
+    PAYMENT_UNCONFIRMED: 'Checkout ended without a verified payment. Review in Stripe.' };
 
 export default function AdminPaymentsPage() {
     const [params, setParams] = useSearchParams();
@@ -103,6 +106,14 @@ export default function AdminPaymentsPage() {
                         <p className="text-sm text-gray-600">Payment #{payment.paymentId} · Registration #{payment.registrationId} · {currency.format(payment.amount)}</p>
                         {payment.transactionReference && <p className="break-all text-sm">Provider reference <code>{payment.transactionReference}</code></p>}
                         {payment.issue && <p className="mt-2 text-sm font-medium text-amber-900">{payment.issue}</p>}
+                        {payment.provider === 'STRIPE_SANDBOX' && (
+                            <p className="mt-2 text-sm">
+                                Stripe sandbox{payment.checkoutReferenceSuffix && <> · Checkout <code>…{payment.checkoutReferenceSuffix}</code></>}
+                            </p>
+                        )}
+                        {payment.providerIssue && (
+                            <p className="mt-2 text-sm font-semibold text-amber-900">{checkoutIssues[payment.providerIssue]}</p>
+                        )}
                         {payment.refundStatus && (
                             <p className="mt-2 text-sm font-medium">
                                 Sandbox refund: {refundStatuses[payment.refundStatus]}

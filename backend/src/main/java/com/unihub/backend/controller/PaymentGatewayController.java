@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Profile;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -24,6 +25,7 @@ import java.util.UUID;
 @Slf4j
 @Tag(name = "Payments", description = "Payment gateway simulation endpoints.")
 @Profile("!prod")
+@ConditionalOnProperty(name = "app.payment-gateway.provider", havingValue = "MOCK", matchIfMissing = true)
 public class PaymentGatewayController {
 
     @PostMapping("/process")

@@ -5,7 +5,8 @@ import com.unihub.backend.repository.PaymentRepository.ReviewEntry;
 public record PaymentReviewResponse(Long paymentId, Long registrationId, Long workshopId, String workshopTitle,
                                     Long amount, String status, String transactionReference, String issue,
                                     String refundStatus, String refundReference, String refundFailureCode,
-                                    boolean sandboxRefundAvailable) {
+                                    boolean sandboxRefundAvailable, String provider, String providerIssue,
+                                    String checkoutReferenceSuffix) {
     public static PaymentReviewResponse from(ReviewEntry payment, boolean sandboxRefundAvailable) {
         String issue = switch (payment.getStatus()) {
             case "PROCESSING" -> "Awaiting a definitive payment provider outcome";
@@ -20,6 +21,7 @@ public record PaymentReviewResponse(Long paymentId, Long registrationId, Long wo
         return new PaymentReviewResponse(payment.getPaymentId(), payment.getRegistrationId(), payment.getWorkshopId(),
                 payment.getWorkshopTitle(), payment.getAmount(), payment.getStatus(), payment.getTransactionReference(),
                 payment.getRefundStatus() == null ? issue : null, payment.getRefundStatus(),
-                payment.getRefundReference(), payment.getRefundFailureCode(), sandboxRefundAvailable);
+                payment.getRefundReference(), payment.getRefundFailureCode(), sandboxRefundAvailable,
+                payment.getProvider(), payment.getProviderIssue(), payment.getCheckoutReferenceSuffix());
     }
 }

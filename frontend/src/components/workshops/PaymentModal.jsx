@@ -1,14 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import { useState } from 'react';
 
-const PaymentModal = ({ isOpen, workshop, idempotencyKey, onClose, onPaymentSuccess, onPaymentError }) => {
+const PaymentModal = ({ isOpen, workshop, onClose, onPaymentSuccess, onPaymentError }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    if (!isOpen) return;
-    setError('');
-    setIsProcessing(false);
-  }, [isOpen, workshop?.id]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -38,17 +32,17 @@ const PaymentModal = ({ isOpen, workshop, idempotencyKey, onClose, onPaymentSucc
               <p className="mt-1 text-sm text-slate-300">{workshop?.title}</p>
             </div>
             <div className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-white/90">
-              {idempotencyKey ? 'Live Demo' : 'Demo'}
+              Sandbox
             </div>
           </div>
 
           <div className="mt-6 rounded-2xl border border-white/10 bg-white/10 p-4 backdrop-blur-sm">
             <div className="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-slate-300">
               <span>UniHub Payment</span>
-              <span>Auto-confirm</span>
+              <span>Test mode</span>
             </div>
             <div className="mt-6 text-sm text-slate-100">
-              No card details are required for this demo flow.
+              Use test payment details if a checkout page opens.
             </div>
           </div>
         </div>
@@ -67,7 +61,7 @@ const PaymentModal = ({ isOpen, workshop, idempotencyKey, onClose, onPaymentSucc
             </span>
           </div>
           <p className="mt-2 text-xs text-gray-500">
-            Click payment to complete immediately. The system will confirm the transaction automatically.
+            Your ticket will be available after UniHub verifies the payment.
           </p>
         </div>
 

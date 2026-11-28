@@ -24,6 +24,7 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
             from payments p join registrations r on r.id = p.registration_id
             join workshops w on w.id = r.workshop_id
             left join payment_refunds f on f.payment_id = p.id
+            left join stripe_checkout_attempts a on a.payment_id = p.id
             """;
 
     @Query(value = """
@@ -31,6 +32,8 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
                    w.title as "workshopTitle", p.amount, p.status, w.status as "workshopStatus",
                    p.transaction_id as "transactionReference", p.failure_reason as "failureReason",
                    f.status as "refundStatus", f.refund_reference as "refundReference", f.failure_code as "refundFailureCode",
+                   p.provider as "provider", a.issue as "providerIssue",
+                   CASE WHEN a.session_id IS NOT NULL THEN right(a.session_id, 10) END as "checkoutReferenceSuffix",
                    (f.id is null and p.amount > 0
                     and (p.status = 'REFUND_REQUIRED' or (p.status = 'COMPLETED' and w.status = 'CANCELLED'))
                     and m.transaction_id is not null) as "refundEligible"
@@ -54,12 +57,15 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
         String getRefundStatus();
         String getRefundReference();
         String getRefundFailureCode();
+        String getProvider();
+        String getProviderIssue();
+        String getCheckoutReferenceSuffix();
         boolean getRefundEligible();
     }
     Optional<Payment> findByIdempotencyKey(String idempotencyKey);
     Optional<Payment> findByRegistrationId(Long registrationId);
 
-    @Query("select p.id from Payment p where p.status = 'PROCESSING' order by p.id")
+    @Query("select p.id from Payment p where p.status = 'PROCESSING' and p.provider = 'MOCK' order by p.id")
     List<Long> findProcessingIds();
 
     @Query("select p.registration.workshop.id from Payment p where p.id = :id")

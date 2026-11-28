@@ -69,6 +69,24 @@ test('completes a pending demo payment with its original booking key', async ({ 
     await expect(pending).toBeHidden();
 });
 
+test('opens hosted sandbox checkout and waits for the server to release the QR', async ({ page, studentApi }) => {
+    studentApi.hostedCheckout = true;
+    await page.route('https://checkout.stripe.com/**', (route) => route.fulfill({
+        status: 302, headers: { location: 'http://127.0.0.1:4178/registration-history?checkout=return' },
+    }));
+    await signInTo(page, '/registration-history');
+    await page.getByRole('region', { name: 'Awaiting payment' }).getByRole('button', { name: 'Pay now' }).click();
+    await page.locator('form').getByRole('button', { name: 'Pay Now', exact: true }).click();
+    await expect(page).toHaveURL(/\/registration-history\?checkout=return$/);
+    await expect(page.getByText(/verified payment result/)).toBeVisible();
+    await expect(page.getByRole('button', { name: /Show QR code/ })).toHaveCount(0);
+    expect(studentApi.payments).toEqual(['e2e-hold-2']);
+    studentApi.verifyHostedPayment();
+    await page.getByRole('button', { name: 'Refresh registration status' }).click();
+    await page.getByRole('button', { name: 'Show QR code for Mobile App Prototyping' }).click();
+    await expect(page.getByRole('img', { name: 'Workshop check-in QR code' })).toBeVisible();
+});
+
 test('updates unread status only after a successful save and keeps it after reload', async ({ page, studentApi }) => {
     await signInTo(page, '/notifications');
     await expect(page.getByText('1 unread on this page', { exact: true })).toBeVisible();

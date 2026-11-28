@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useState, useMemo } from 'react';
-import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import workshopService from '../services/workshopService';
 import workshopRegistrationService from '../services/workshopRegistrationService';
 import { useReadCache, useReadQuery } from '../context/readQueries';
@@ -45,6 +45,7 @@ const EMPTY_PAGE = { content: [], totalPages: 0, totalElements: 0 };
 
 const WorkshopListPage = () => {
     const location = useLocation();
+    const navigate = useNavigate();
     const requestedWorkshopId = location.state?.workshopId;
     const [searchParams, setSearchParams] = useSearchParams();
     const filters = useMemo(() => Object.fromEntries(FILTER_NAMES.map((name) => [name, searchParams.get(name) || ''])), [searchParams]);
@@ -120,13 +121,17 @@ const WorkshopListPage = () => {
         setRegistrationError('');
 
         try {
-            // Generate unique Idempotency-Key
-            const idempotencyKey = registrationData.idempotencyKey || crypto.randomUUID();
             const paymentResponse = await workshopRegistrationService.processPayment(
                 registrationData.workshopId,
-                idempotencyKey
+                registrationData.idempotencyKey
             );
 
+            if (paymentResponse.checkoutStatus === 'OPEN') return;
+            if (paymentResponse.checkoutStatus) {
+                reload();
+                navigate('/registration-history?checkout=return');
+                return;
+            }
             if (paymentResponse.success) {
                 if (paymentResponse.qrCode) {
                     setRegistrationData((current) => ({
@@ -138,19 +143,11 @@ const WorkshopListPage = () => {
                 setShowPaymentModal(false);
                 setShowSuccessModal(true);
             } else {
-                setRegistrationError(`Payment failed: ${paymentResponse.message}`);
-                reload();
+                throw new Error(paymentResponse.message || 'Payment failed');
             }
         } catch (error) {
-            const status = error.response?.status;
-            if (status === 409) {
-                setRegistrationError('Payment is already being processed. Please wait or try again.');
-            } else if (status === 429) {
-                setRegistrationError('Too many payment requests. Please try again later.');
-            } else {
-                setRegistrationError(error.response?.data?.message || error.message || 'Payment failed');
-            }
             reload();
+            throw error;
         } finally {
             setIsRegistering(false);
         }
@@ -248,7 +245,6 @@ const WorkshopListPage = () => {
                             title: registrationData.title || 'Workshop',
                             price: registrationData.amount,
                         }}
-                        idempotencyKey={registrationData.idempotencyKey}
                         onClose={async () => {
                             if (registrationData?.workshopId) {
                                 try {

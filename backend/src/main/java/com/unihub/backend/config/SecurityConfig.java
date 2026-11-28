@@ -1,6 +1,7 @@
 package com.unihub.backend.config;
 
 import com.unihub.backend.filter.RateLimiterFilter;
+import com.unihub.backend.controller.StripeWebhookController;
 import com.unihub.backend.security.JwtAuthFilter;
 
 import lombok.RequiredArgsConstructor;
@@ -52,8 +53,12 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/api/v1/telegram/webhook").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/admin/payments/*/refunds").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, StripeWebhookController.PATH)
+                        .access((authentication, context) -> new AuthorizationDecision(!production &&
+                                "STRIPE_SANDBOX".equals(environment.getProperty("app.payment-gateway.provider"))))
                         .requestMatchers(HttpMethod.POST, "/api/v1/payments/**")
-                        .access((authentication, context) -> new AuthorizationDecision(!production))
+                        .access((authentication, context) -> new AuthorizationDecision(!production &&
+                                "MOCK".equals(environment.getProperty("app.payment-gateway.provider"))))
                         .requestMatchers(HttpMethod.GET, "/api/v1/workshops").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/workshops/**").permitAll()
                         .requestMatchers(SWAGGER_WHITELIST).permitAll()
