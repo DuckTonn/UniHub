@@ -95,7 +95,8 @@ def main(base, env_file, student_id, admin_id):
 
     if "IDENTITY_FIXTURE_PASSWORD" in os.environ:
         web_access = verify_client_login(base, "web", "web-login@example.test", "STUDENT")
-        staff_access = verify_client_login(base, "app", "app-login@example.test", "STAFF")
+        verify_client_login(base, "app", "app-login@example.test", "STAFF")
+        staff_access = verify_client_login(base, "browser", "app-login@example.test", "STAFF")
         for client, email in (("web", "app-login@example.test"), ("app", "web-login@example.test")):
             request(base, f"/api/v1/auth/login/{client}", 403, method="POST",
                     data={"email": email, "password": os.environ["IDENTITY_FIXTURE_PASSWORD"]})

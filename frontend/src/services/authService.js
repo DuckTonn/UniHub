@@ -9,12 +9,8 @@ const authService = {
         return axiosClient.post('/auth/register/admin-staff', data);
     },
 
-    webLogin(data) {
-        return axiosClient.post('/auth/login/web', data);
-    },
-
-    appLogin(data) {
-        return axiosClient.post('/auth/login/app', data);
+    login(data) {
+        return axiosClient.post('/auth/login/browser', data);
     },
 
     refreshToken(refreshToken) {

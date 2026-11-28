@@ -17,10 +17,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Set;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class AuthService {
+    private static final Set<String> BROWSER_ROLES = Set.of(Role.STUDENT.name(), Role.ADMIN.name(), Role.STAFF.name());
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -71,6 +74,15 @@ public class AuthService {
         userRepository.save(newUser);
 
         log.info("Admin/Staff account created: {}", newUser.getEmail());
+    }
+
+    public AuthResponse browserLogin(LoginRequest request) {
+        User user = authenticateUser(request.getEmail(), request.getPassword());
+        String role = user.getRole();
+        if (role == null || !BROWSER_ROLES.contains(role)) {
+            throw new ForbiddenOperationException("This account cannot sign in to UniHub.");
+        }
+        return buildAuthResponse(user);
     }
 
     public AuthResponse webLogin(LoginRequest request) {

@@ -74,8 +74,8 @@ const App = () => {
                 <Routes>
                     <Route element={<GuestRoute />}>
                         <Route element={<AuthLayout />}>
-                            <Route path="/login" element={<LoginPage key="unihub-login" />} />
-                            <Route path="/staff/login" element={<LoginPage key="staff-login" staff />} />
+                            <Route path="/login" element={<LoginPage />} />
+                            <Route path="/staff/login" element={<Navigate to="/login" replace />} />
                             <Route path="/register" element={<RegisterPage />} />
                         </Route>
                     </Route>
@@ -104,11 +104,12 @@ const App = () => {
                                 <Route path="/admin/payments" element={<AdminPaymentsPage />} />
                             </Route>
 
+                            <Route element={<ProtectedRoute allowedRoles={['STAFF']} />}>
+                                <Route path="/check-in" element={<StaffCheckinPage />} />
+                            </Route>
+
                             {/* Catch-all route for undefined URLs (404 Not Found) */}
                             <Route path="*" element={<NotFoundPage />} />
-                        </Route>
-                        <Route element={<ProtectedRoute allowedRoles={['STAFF']} loginPath="/staff/login" />}>
-                            <Route path="/check-in" element={<StaffCheckinPage />} />
                         </Route>
                     </Route>
                 </Routes>

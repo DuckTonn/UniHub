@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import PasswordField from '../components/common/PasswordField';
 import authService from '../services/authService';
 
-const LoginPage = ({ staff = false }) => {
+const LoginPage = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
@@ -17,7 +17,7 @@ const LoginPage = ({ staff = false }) => {
         setIsSubmitting(true);
 
         try {
-            const session = await (staff ? authService.appLogin({ email, password }) : authService.webLogin({ email, password }));
+            const session = await authService.login({ email, password });
             await login(session);
         } catch (err) {
             setError(err.message || 'We couldn’t sign you in. Please try again.');
@@ -28,9 +28,8 @@ const LoginPage = ({ staff = false }) => {
 
     return (
         <section className="auth-content" aria-labelledby="login-title">
-            <h1 className="auth-title" id="login-title">{staff ? 'Staff sign in' : 'Welcome back'}</h1>
-            <p className="auth-intro">{staff ? 'Use your staff account to check in workshop attendees.'
-                : 'Sign in to manage your workshops and registrations.'}</p>
+            <h1 className="auth-title" id="login-title">Welcome back</h1>
+            <p className="auth-intro">Sign in to manage your workshops and registrations.</p>
 
             {error && <p className="auth-feedback" role="alert">{error}</p>}
 
@@ -66,14 +65,9 @@ const LoginPage = ({ staff = false }) => {
                 </button>
             </form>
 
-            {staff ? (
-                <p className="auth-switch"><Link to="/login">Back to UniHub sign in</Link></p>
-            ) : (
-                <div className="auth-switch">
-                    <p>New to UniHub? <Link to="/register">Create a student account</Link></p>
-                    <Link to="/staff/login" className="auth-staff-link">Staff sign in</Link>
-                </div>
-            )}
+            <p className="auth-switch">
+                New to UniHub? <Link to="/register">Create a student account</Link>
+            </p>
         </section>
     );
 };
