@@ -79,10 +79,15 @@ test('staff signs in and sees accepted, duplicate and rejected check-ins without
         return route.fulfill({ status: 404, json: { message: 'Missing fixture' } });
     });
 
+    await page.goto('/login');
+    await expect(page.getByRole('checkbox')).toHaveCount(0);
+    await page.getByRole('link', { name: 'Staff sign in', exact: true }).click();
+    await expect(page).toHaveURL(/\/staff\/login$/);
+    await expect(page.getByRole('heading', { name: 'Staff sign in' })).toBeVisible();
     await page.goto('/check-in');
+    await expect(page).toHaveURL(/\/staff\/login$/);
     await page.getByLabel('Email address').fill('staff@example.test');
     await page.getByLabel('Password', { exact: true }).fill('fixture-password');
-    await page.getByLabel('Sign in as check-in staff').check();
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect(page).toHaveURL(/\/check-in$/);
     await page.getByRole('button', { name: 'Campus Lab #31' }).click();
