@@ -14,15 +14,48 @@ import java.util.Optional;
 @Repository
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
     String REVIEW_FILTER = """
-            where (:workshopId is null or w.id = :workshopId)
+            where (CAST(:workshopId AS bigint) is null or w.id = :workshopId)
               and (:status = 'ALL' or p.status = :status
                    or (:status = 'NEEDS_REVIEW' and p.status in ('PROCESSING', 'FAILED', 'REFUND_REQUIRED'))
                    or (:status in ('NEEDS_REVIEW', 'REFUND_REQUIRED') and p.status = 'COMPLETED' and w.status = 'CANCELLED'))
+              and (:status not in ('NEEDS_REVIEW', 'REFUND_REQUIRED') or f.status is distinct from 'SUCCEEDED')
+            """;
+    String REVIEW_JOINS = """
+            from payments p join registrations r on r.id = p.registration_id
+            join workshops w on w.id = r.workshop_id
+            left join payment_refunds f on f.payment_id = p.id
             """;
 
-    @Query(value = "select p from Payment p join fetch p.registration r join fetch r.workshop w " + REVIEW_FILTER + " order by p.id desc",
-            countQuery = "select count(p) from Payment p join p.registration r join r.workshop w " + REVIEW_FILTER)
-    Page<Payment> findForReview(Long workshopId, String status, Pageable pageable);
+    @Query(value = """
+            select p.id as "paymentId", r.id as "registrationId", w.id as "workshopId",
+                   w.title as "workshopTitle", p.amount, p.status, w.status as "workshopStatus",
+                   p.transaction_id as "transactionReference", p.failure_reason as "failureReason",
+                   f.status as "refundStatus", f.refund_reference as "refundReference", f.failure_code as "refundFailureCode",
+                   (f.id is null and p.amount > 0
+                    and (p.status = 'REFUND_REQUIRED' or (p.status = 'COMPLETED' and w.status = 'CANCELLED'))
+                    and m.transaction_id is not null) as "refundEligible"
+            """ + REVIEW_JOINS + """
+            left join mock_payment_operations m on m.idempotency_key = p.idempotency_key
+              and m.transaction_id = p.transaction_id and m.amount = p.amount
+            """ + REVIEW_FILTER + " order by p.id desc",
+            countQuery = "select count(*) " + REVIEW_JOINS + REVIEW_FILTER, nativeQuery = true)
+    Page<ReviewEntry> findForReview(Long workshopId, String status, Pageable pageable);
+
+    interface ReviewEntry {
+        long getPaymentId();
+        long getRegistrationId();
+        long getWorkshopId();
+        String getWorkshopTitle();
+        long getAmount();
+        String getStatus();
+        String getWorkshopStatus();
+        String getTransactionReference();
+        String getFailureReason();
+        String getRefundStatus();
+        String getRefundReference();
+        String getRefundFailureCode();
+        boolean getRefundEligible();
+    }
     Optional<Payment> findByIdempotencyKey(String idempotencyKey);
     Optional<Payment> findByRegistrationId(Long registrationId);
 

@@ -14,6 +14,8 @@ services:
       - cache
 
   backend:
+    environment:
+      SANDBOX_REFUNDS_ENABLED: "true"
     depends_on:
       postgres:
         condition: service_healthy

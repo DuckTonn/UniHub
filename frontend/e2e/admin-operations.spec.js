@@ -60,6 +60,42 @@ test('admin reviews drafts, filters attendance and opens the payment queue for t
     await expect(page.getByText('Confirm refund with the provider')).toBeVisible();
 });
 
+test('admin retries sandbox confirmation with the original key and sees the recorded refund', async ({ page }) => {
+    const keys = [];
+    let resolved = false;
+    await page.addInitScript(() => {
+        localStorage.setItem('access_token', 'fixture-admin');
+        localStorage.setItem('role', 'ADMIN');
+        localStorage.setItem('user_id', '9');
+    });
+    await page.route('**/api/v1/**', (route) => {
+        const { pathname } = new URL(route.request().url());
+        if (pathname.endsWith('/auth/me')) return route.fulfill({ json: { userId: 9, role: 'ADMIN', fullName: 'Test Admin' } });
+        if (pathname.endsWith('/notifications/unread-count')) return route.fulfill({ json: { unreadCount: 0 } });
+        if (pathname.endsWith('/payments/20/refunds')) {
+            keys.push(route.request().headers()['idempotency-key']);
+            if (keys.length === 1) return route.fulfill({ status: 503, json: { message: 'Unavailable' } });
+            resolved = true;
+            return route.fulfill({ status: 202, json: { refundId: 'same-id', status: 'SUCCEEDED', refundReference: 'SANDBOX-20' } });
+        }
+        if (pathname.endsWith('/admin/payments')) return route.fulfill({ json: envelope([{
+            paymentId: 20, registrationId: 5, workshopTitle: workshop.title, amount: 90000, status: 'COMPLETED',
+            sandboxRefundAvailable: !resolved, refundStatus: resolved ? 'SUCCEEDED' : null,
+            refundReference: resolved ? 'SANDBOX-20' : null,
+        }]) });
+        return route.fulfill({ status: 404, json: { message: 'Missing fixture' } });
+    });
+    await page.goto('/admin/payments?status=ALL');
+    await page.getByRole('button', { name: 'Review sandbox refund' }).click();
+    await expect(page.getByText(/Confirm a sandbox refund/)).toContainText(workshop.title);
+    await page.getByRole('button', { name: 'Confirm sandbox refund' }).click();
+    await expect(page.getByRole('alert')).toContainText('Retry to check the same request');
+    await page.getByRole('button', { name: 'Confirm sandbox refund' }).click();
+    await expect(page.getByText('SANDBOX-20')).toBeVisible();
+    expect(keys[0]).toMatch(/^[a-f0-9-]{36}$/);
+    expect(keys).toEqual([keys[0], keys[0]]);
+});
+
 test('staff signs in and sees accepted, duplicate and rejected check-ins without access to payments', async ({ page }) => {
     let scans = 0;
     await page.route('**/api/v1/**', async (route) => {

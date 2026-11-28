@@ -68,6 +68,12 @@ spring:
             enable: true
 
 app:
+  scheduled-maintenance:
+    enabled: ${SCHEDULED_MAINTENANCE_ENABLED:true}
+  sandbox-refunds:
+    enabled: ${SANDBOX_REFUNDS_ENABLED:false}
+    worker-enabled: ${SANDBOX_REFUNDS_WORKER_ENABLED:true}
+    workshop-id: ${SANDBOX_REFUNDS_WORKSHOP_ID:0}
   payment-gateway:
     provider: ${PAYMENT_PROVIDER:MOCK}
     circuit-breaker:
