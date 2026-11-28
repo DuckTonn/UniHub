@@ -57,6 +57,13 @@ public class AuthController {
         return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
+    @PostMapping("/login/browser")
+    @Operation(summary = "Sign in to UniHub in a browser",
+            description = "Returns JWT tokens and the authenticated account role for students, administrators and staff.")
+    public ResponseEntity<AuthResponse> browserLogin(@Valid @RequestBody LoginRequest request) {
+        return ResponseEntity.ok(authService.browserLogin(request));
+    }
+
     @PostMapping("/login/web")
     @Operation(summary = "Login for web clients", description = "Authenticates a user and returns JWT tokens for web usage.")
     @ApiResponses({

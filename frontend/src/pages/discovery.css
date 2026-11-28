@@ -1,6 +1,5 @@
 .discovery-filters {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: end;
     gap: var(--ui-space-3);
     margin-bottom: var(--ui-space-4);
@@ -35,10 +34,22 @@
     outline-offset: var(--ui-focus-offset);
 }
 
-.discovery-search,
-.discovery-actions,
-.discovery-filters .student-notice {
-    grid-column: 1 / -1;
+.discovery-options summary {
+    width: fit-content;
+    padding-block: 0.45rem;
+    border-radius: 0.3rem;
+    color: var(--ui-color-brand);
+    font-size: 0.875rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.discovery-options-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: end;
+    gap: var(--ui-space-3);
+    margin-top: var(--ui-space-2);
 }
 
 .discovery-filters .discovery-checkbox {
@@ -71,10 +82,7 @@
 }
 
 @media (min-width: 60rem) {
-    .discovery-filters {
-        grid-template-columns: minmax(15rem, 2fr) repeat(3, minmax(0, 1fr));
+    .discovery-options-fields {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
     }
-
-    .discovery-search,
-    .discovery-actions { grid-column: auto; }
 }

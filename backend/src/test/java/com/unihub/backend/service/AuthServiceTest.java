@@ -18,6 +18,8 @@ import io.jsonwebtoken.MalformedJwtException;
 import io.jsonwebtoken.security.SecurityException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -180,6 +182,34 @@ class AuthServiceTest {
         when(passwordEncoder.matches(request.getPassword(), user.getPassword())).thenReturn(true);
 
         assertThrows(ForbiddenOperationException.class, () -> authService.webLogin(request));
+        verify(jwtUtil, never()).generateAccessToken(any(Long.class), any(String.class));
+    }
+
+    @ParameterizedTest
+    @EnumSource(Role.class)
+    void browserLogin_issuesTokensWithTheStoredRole(Role role) {
+        LoginRequest request = loginRequest();
+        User user = baseUser(10L, role.name(), "ACTIVE", "hashed");
+        when(userRepository.findByEmail(request.getEmail())).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches(request.getPassword(), user.getPassword())).thenReturn(true);
+        when(jwtUtil.generateAccessToken(user.getId(), role.name())).thenReturn("access");
+        when(jwtUtil.generateRefreshToken(user.getId(), role.name())).thenReturn("refresh");
+
+        AuthResponse response = authService.browserLogin(request);
+
+        assertEquals(role.name(), response.getRole());
+        assertEquals("access", response.getAccessToken());
+        assertEquals("refresh", response.getRefreshToken());
+    }
+
+    @Test
+    void browserLogin_doesNotIssueTokensForInactiveStaff() {
+        LoginRequest request = loginRequest();
+        User user = baseUser(10L, Role.STAFF.name(), "INACTIVE", "hashed");
+        when(userRepository.findByEmail(request.getEmail())).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches(request.getPassword(), user.getPassword())).thenReturn(true);
+
+        assertThrows(IllegalArgumentException.class, () -> authService.browserLogin(request));
         verify(jwtUtil, never()).generateAccessToken(any(Long.class), any(String.class));
     }
 

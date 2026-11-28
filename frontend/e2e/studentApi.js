@@ -57,7 +57,7 @@ export const test = base.extend({
                     page: pageNumber, size, totalElements: items.length, totalPages: Math.ceil(items.length / size) });
             };
 
-            if (method === 'POST' && path === '/auth/login/web') {
+            if (method === 'POST' && path === '/auth/login/browser') {
                 const body = request.postDataJSON();
                 calls.logins.push(body.email);
                 if (body.email !== student.email || body.password !== student.password) {

@@ -64,7 +64,8 @@ test('staff signs in and sees accepted, duplicate and rejected check-ins without
     let scans = 0;
     await page.route('**/api/v1/**', async (route) => {
         const { pathname } = new URL(route.request().url());
-        if (pathname.endsWith('/auth/login/app')) {
+        if (pathname.endsWith('/auth/login/browser')) {
+            expect(route.request().postDataJSON()).toEqual({ email: 'staff@example.test', password: 'fixture-password' });
             return route.fulfill({ json: { accessToken: 'fixture-staff', role: 'STAFF', userId: 7 } });
         }
         if (pathname.endsWith('/auth/me')) return route.fulfill({ json: { userId: 7, role: 'STAFF' } });
@@ -79,10 +80,14 @@ test('staff signs in and sees accepted, duplicate and rejected check-ins without
         return route.fulfill({ status: 404, json: { message: 'Missing fixture' } });
     });
 
+    await page.goto('/staff/login');
+    await expect(page).toHaveURL(/\/login$/);
+    await expect(page.getByRole('checkbox')).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Staff sign in', exact: true })).toHaveCount(0);
     await page.goto('/check-in');
+    await expect(page).toHaveURL(/\/login$/);
     await page.getByLabel('Email address').fill('staff@example.test');
     await page.getByLabel('Password', { exact: true }).fill('fixture-password');
-    await page.getByLabel('Sign in as check-in staff').check();
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect(page).toHaveURL(/\/check-in$/);
     await page.getByRole('button', { name: 'Campus Lab #31' }).click();

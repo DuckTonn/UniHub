@@ -75,6 +75,7 @@ const App = () => {
                     <Route element={<GuestRoute />}>
                         <Route element={<AuthLayout />}>
                             <Route path="/login" element={<LoginPage />} />
+                            <Route path="/staff/login" element={<Navigate to="/login" replace />} />
                             <Route path="/register" element={<RegisterPage />} />
                         </Route>
                     </Route>
@@ -102,6 +103,7 @@ const App = () => {
                                 <Route path="/admin/rooms" element={<RoomsPage />} />
                                 <Route path="/admin/payments" element={<AdminPaymentsPage />} />
                             </Route>
+
                             <Route element={<ProtectedRoute allowedRoles={['STAFF']} />}>
                                 <Route path="/check-in" element={<StaffCheckinPage />} />
                             </Route>
