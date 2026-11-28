@@ -138,6 +138,10 @@ test('applies catalog filters through the URL and resets pagination', async ({ p
     await expect(page.getByRole('heading', { name: 'Campus workshop 13' })).toBeVisible();
 
     await page.getByRole('searchbox', { name: 'Search by name or speaker' }).fill('Casey Nguyen');
+    if (page.viewportSize().width < 960) {
+        await expect(page.getByLabel('From date')).toBeHidden();
+        await page.getByText('More filters', { exact: true }).click();
+    }
     await page.getByLabel('From date').fill('2026-06-16');
     await page.getByLabel('To date').fill('2026-06-16');
     await page.getByRole('combobox', { name: 'Fee', exact: true }).selectOption('PAID');
@@ -151,6 +155,7 @@ test('applies catalog filters through the URL and resets pagination', async ({ p
     });
     await page.reload();
     await expect(page.getByRole('heading', { name: 'Mobile App Prototyping' })).toBeVisible();
+    await expect(page.getByText('More filters (4 active)', { exact: true })).toBeVisible();
     await expect(page.getByRole('combobox', { name: 'Fee', exact: true })).toHaveValue('PAID');
     await page.goBack();
     await expect(page).toHaveURL(/page=1$/);
