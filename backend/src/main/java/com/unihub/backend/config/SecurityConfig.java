@@ -51,6 +51,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/test").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers("/api/v1/telegram/webhook").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/admin/payments/*/refunds").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/v1/payments/**")
                         .access((authentication, context) -> new AuthorizationDecision(!production))
                         .requestMatchers(HttpMethod.GET, "/api/v1/workshops").permitAll()

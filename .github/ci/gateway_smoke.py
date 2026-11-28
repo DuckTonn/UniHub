@@ -8,6 +8,7 @@ import os
 import re
 import sys
 import time
+from uuid import uuid4
 from datetime import datetime
 from pathlib import Path
 from urllib.error import HTTPError
@@ -205,6 +206,34 @@ def verify_admin_operations(base, admin, staff, student, workshop_id):
     refunds, _ = request(base, f"{payments}&status=REFUND_REQUIRED", 200, token=admin)
     items = json.loads(refunds)["content"]
     assert len(items) == 1 and items[0]["status"] == "COMPLETED" and "Workshop cancelled" in items[0]["issue"]
+    payment = items[0]
+    assert payment["sandboxRefundAvailable"] is True
+    refund_path = f"/api/v1/admin/payments/{payment['paymentId']}/refunds"
+    refund_key = {"Idempotency-Key": str(uuid4())}
+    for token in (None, staff, student):
+        request(base, refund_path, 403, token=token, method="POST", headers=refund_key)
+    request(base, refund_path, 400, token=admin, method="POST")
+    body, _ = request(base, refund_path, 202, token=admin, method="POST", headers=refund_key)
+    refund_id = json.loads(body)["refundId"]
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        body, _ = request(base, refund_path, 202, token=admin, method="POST", headers=refund_key)
+        replay = json.loads(body)
+        assert replay["refundId"] == refund_id
+        if replay["status"] == "SUCCEEDED":
+            break
+        time.sleep(2)
+    else:
+        raise AssertionError("Sandbox refund did not settle")
+    assert replay["refundReference"].startswith("SANDBOX-")
+    request(base, refund_path, 409, token=admin, method="POST", headers={"Idempotency-Key": str(uuid4())})
+    body, _ = request(base, f"{payments}&status=REFUND_REQUIRED", 200, token=admin)
+    assert not json.loads(body)["content"]
+    body, _ = request(base, f"{payments}&status=ALL", 200, token=admin)
+    refunded = json.loads(body)["content"][0]
+    assert refunded["refundReference"] == replay["refundReference"]
+    assert refunded["transactionReference"] == payment["transactionReference"]
+    assert refunded["amount"] == payment["amount"]
 
 
 def verify_document_job(base, admin, student, workshop_id):

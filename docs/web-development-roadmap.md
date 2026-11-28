@@ -60,9 +60,19 @@ Cache dữ liệu đọc dùng bộ nhớ riêng cho mỗi tài khoản, dùng l
 ### Vận hành mốc 4
 
 - ADMIN lọc trạng thái workshop trước khi phân trang, dùng **Drafts to review** để xem bản nháp và mở **View Attendances** để tra cứu tên, mã sinh viên, email hoặc trạng thái check-in trên toàn bộ danh sách.
-- ADMIN mở **Review payments** từ dashboard hoặc một workshop có phí. Bộ lọc **Needs review** gồm giao dịch đang xử lý, thất bại, yêu cầu hoàn tiền và giao dịch đã thu tiền của workshop bị hủy. Mã tham chiếu và trạng thái gốc giúp đối chiếu với nhà cung cấp. Thao tác đối soát chỉ đọc. Xác nhận và ghi nhận việc hoàn tiền theo quy trình của nhà cung cấp.
+- ADMIN mở **Review payments** từ dashboard hoặc một workshop có phí. Bộ lọc **Needs review** gồm giao dịch đang xử lý, thất bại, yêu cầu hoàn tiền và giao dịch đã thu tiền của workshop bị hủy. Mã tham chiếu và trạng thái gốc giúp đối chiếu với nhà cung cấp. Mốc 5 bổ sung xác nhận cho giao dịch sandbox.
 - Web dùng chung một form đăng nhập. Backend xác thực và trả về vai trò qua `POST /api/v1/auth/login/browser`. Web đưa STAFF đến `/check-in`, ADMIN đến dashboard và sinh viên về trang họ đang mở hoặc trang chủ. STAFF chọn workshop rồi quét bằng thiết bị nhập như bàn phím hoặc dán mã. Android tiếp tục dùng endpoint đăng nhập và API đồng bộ hiện có. Giờ quét web dùng múi giờ campus `Asia/Ho_Chi_Minh`.
 - Tìm **Request ID** hiển thị khi thao tác lỗi trong log Nginx, gateway và backend. Từ log backend nối sang worker bằng mã thanh toán, UUID sự kiện thông báo hoặc cặp mã workshop và generation AI. Các bản ghi này dùng định danh vận hành và không ghi payload, QR, JWT hay nội dung thông báo. Prometheus theo dõi số giao dịch `PROCESSING` và `REFUND_REQUIRED` trong sổ cái.
 - Job Compose chạy smoke qua gateway và diễn tập lỗi Redis, phục hồi PostgreSQL, rollback image trên hạ tầng CI tạm. Trước khi phát hành, chạy lại trên staging theo [runbook Phase 6](microservices-phase-6.md) và lưu kết quả của từng bài diễn tập.
 
-Nên bắt đầu với mốc 1 để các thay đổi tìm kiếm, hiệu năng và thao tác quản trị sau đó có kiểm thử hồi quy bao phủ.
+## 5. Hoàn tiền sandbox và xác nhận đối soát
+
+Cho ADMIN xác nhận hoàn toàn phần, theo dõi kết quả và gửi lại an toàn sau timeout. Nghiệm thu bằng một khoản hoàn duy nhất khi gửi lặp hoặc gửi đồng thời. Xem [spec hoàn tiền sandbox](specs/sandbox-refunds.md).
+
+## 6. Thanh toán qua nhà cung cấp
+
+Chạy sandbox của nhà cung cấp qua các tình huống thanh toán, webhook, đối soát và hoàn tiền trước khi mở giao dịch trên production. Xem [spec tích hợp và phát hành thanh toán](specs/payment-provider-rollout.md).
+
+## 7. Kiểm chứng staging và UAT
+
+Chuẩn hóa dữ liệu thử, ghi kết quả từ người tham gia thực tế và lưu bằng chứng cho các bài diễn tập khôi phục, mất Redis và rollback. Có thể bắt đầu song song với mốc 5. Xem [spec kiểm chứng staging](specs/staging-release-verification.md).

@@ -238,6 +238,8 @@ Docker Compose chạy Nginx/React, Spring Cloud Gateway, backend, FastAPI và Re
 
 [Production & DevOps Phase 6](docs/microservices-phase-6.md) mô tả CI, monitoring và quy trình triển khai theo digest đã kiểm chứng.
 
+Xem [lộ trình web](docs/web-development-roadmap.md) và [các spec phát triển tiếp theo](docs/specs/README.md) cho hoàn tiền sandbox, tích hợp thanh toán và kiểm chứng staging.
+
 1. Khởi chạy cụm dịch vụ Web hệ thống:
 ```bash
 docker compose --env-file .env.production up -d --build --wait
